@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>ghomedah</title>
+</head>
+
+<body>
+	<canvas id="c" width="800" height="800"></canvas>
+</body>
+<script>
+	const ctx = document.getElementById('c').getContext('2d');
+	let latest = null;
+	const ws = new WebSocket('ws://localhost:8787');
+
+	let id = null;
+
+	const inputs = {
+		w: false,
+		s: false,
+		a: false,
+		d: false
+	};
+
+	ws.addEventListener("message", (e) => {
+		const data = JSON.parse(e.data);
+
+		if (data.type === 'welcome') {
+			id = data.payload.id;
+		} else if (data.type === 'snapshot') {
+			latest = data;
+		}
+	});
+
+	function sendInput() {
+		ws.send(JSON.stringify({type: 'input', payload: inputs}));
+	};
+
+	window.addEventListener('keydown', (e) => {
+		const key = e.key.toLowerCase();
+
+		if (key in inputs && inputs[key] === false) {
+			inputs[key] = true;
+			sendInput();
+		}
+	});
+
+	window.addEventListener('keyup', (e) => {
+		const key = e.key.toLowerCase();
+
+		if (key in inputs && inputs[key] === true) {
+			inputs[key] = false;
+			sendInput();
+		}
+	});
+
+	(function frame() {
+		ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, 800, 800);
+		if (latest) for (const p of latest.players) {
+			ctx.fillStyle = p.id === id ? '#e8c555' : '#e8c';
+			ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2); ctx.fill();
+		}
+		requestAnimationFrame(frame);
+	})();
+
+</script>
+
+</html>
