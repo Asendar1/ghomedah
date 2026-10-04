@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { startGame } from './renderer'
+import { startGame } from './renderer3d'
 
 export default function App() {
   const ref = useRef<HTMLCanvasElement>(null)
