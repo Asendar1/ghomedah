@@ -72,16 +72,16 @@ setInterval(() => {
 	players.forEach((v, k) => {
 		const player: Players = players.get(k) as Players;
 
-		for (const [key, isPressed] of Object.entries(player.inputs)) {
-			if (isPressed) {
-				const dir = DIRECTION_MAP[key as keyof typeof DIRECTION_MAP];
+		const i = player.inputs;
+		const dx = (i.d ? 1 : 0) - (i.a ? 1 : 0);
+		const dy = (i.s ? 1 : 0) - (i.w ? 1 : 0);
+		const len = Math.hypot(dx, dy) || 1;
 
-				if (dir) {
-					player.x += dir.dx * SPEED;
-					player.y += dir.dy * SPEED;
-				}
-			}
-		}
+		player.x += (dx / len) * SPEED;
+		player.y += (dy / len) * SPEED;
+
+		player.x = Math.max(10, Math.min(790, player.x));
+		player.y = Math.max(10, Math.min(790, player.y));
 	});
 
 	const snap = JSON.stringify({
