@@ -52,7 +52,8 @@ wss.on("connection", (ws: CustomWebScoket) => {
 			if (payload.type === "input") {
 				const player = players.get(ws.id);
 				if (player) {
-					player.inputs = payload.payload;
+					const p = payload.payload;
+					player.inputs = { w: !!p?.w, s: !!p?.s, a: !!p?.a, d: !!p?.d };
 				}
 			}
 		} catch (err) {
@@ -91,3 +92,5 @@ setInterval(() => {
 	for (const c of wss.clients)
 		if (c.readyState === WebSocket.OPEN) c.send(snap);
 }, TICK_MS);
+
+// TODO : NEXT: Interpolation
