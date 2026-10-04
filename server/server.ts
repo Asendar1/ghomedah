@@ -1,17 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { getRandomPos } from "./helper.ts";
+import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
 const wss = new WebSocketServer({ port: 8787 });
 let tick = 0;
 
-interface Input {
-	w: boolean;
-	s: boolean;
-	a: boolean;
-	d: boolean;
-}
-
+// server-internal storage shape — NOT part of the wire contract
 interface Players {
 	id: string;
 	x: number;
@@ -22,13 +17,6 @@ interface Players {
 interface CustomWebScoket extends WebSocket {
 	id: string;
 }
-
-const DIRECTION_MAP = {
-	w: { dx: 0, dy: -1 }, // Up
-	s: { dx: 0, dy: 1 }, // Down
-	a: { dx: -1, dy: 0 }, // Left
-	d: { dx: 1, dy: 0 }, // Right
-};
 
 const players = new Map<string, Players>();
 
@@ -43,16 +31,17 @@ wss.on("connection", (ws: CustomWebScoket) => {
 		inputs: { w: false, s: false, a: false, d: false },
 	};
 	players.set(ws.id, newPlayer);
-	ws.send(JSON.stringify({ type: "welcome", payload: { id: ws.id } }));
+	const welcome: ServerMsg = { type: "welcome", payload: { id: ws.id } };
+	ws.send(JSON.stringify(welcome));
 
 	ws.on("message", (rawMsg: string) => {
 		try {
-			const payload = JSON.parse(rawMsg);
+			const msg = JSON.parse(rawMsg) as ClientMsg; // compile-time assertion — the runtime whitelist below stays the real defense
 
-			if (payload.type === "input") {
+			if (msg.type === "input") {
 				const player = players.get(ws.id);
 				if (player) {
-					const p = payload.payload;
+					const p = msg.payload;
 					player.inputs = { w: !!p?.w, s: !!p?.s, a: !!p?.a, d: !!p?.d };
 				}
 			}
@@ -84,13 +73,12 @@ setInterval(() => {
 		player.y = Math.max(10, Math.min(790, player.y));
 	});
 
-	const snap = JSON.stringify({
+	const snap: ServerMsg = {
 		type: "snapshot",
 		tick,
-		players: Array.from(players.values()),
-	});
+		players: Array.from(players.values(), ({ id, x, y }) => ({ id, x, y })),
+	};
+	const snapJson = JSON.stringify(snap);
 	for (const c of wss.clients)
-		if (c.readyState === WebSocket.OPEN) c.send(snap);
+		if (c.readyState === WebSocket.OPEN) c.send(snapJson);
 }, TICK_MS);
-
-// TODO : NEXT: Interpolation

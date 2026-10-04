@@ -11,7 +11,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#050505]">
-      <canvas ref={ref} width={800} height={800} />
+      <canvas  className='border-8 border-amber-200' ref={ref} width={800} height={800} />
     </div>
   )
 }

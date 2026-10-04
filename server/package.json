@@ -1,0 +1,13 @@
+{
+	"name": "@ghomedah/server",
+	"private": "true",
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "node --watch server.ts"
+	},
+	"dependencies": {
+		"@ghomedah/shared": "*",
+		"ws": "^8.22.0"
+	}
+}

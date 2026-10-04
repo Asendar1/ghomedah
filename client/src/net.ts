@@ -2,17 +2,13 @@
 // Owns: the socket, your id, the snapshot ring, keyboard input.
 // The renderer reads across the seam: samples + id.
 
-export interface Player {
-	id: string;
-	x: number;
-	y: number;
-}
+import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
-export interface Snapshot {
-	tick: number;
-	players: Player[];
-	at: number; // arrival time (performance.now) — stamped here, not by the server
-}
+type SnapshotMsg = Extract<ServerMsg, { type: "snapshot" }>;
+
+export type Snapshot = SnapshotMsg & {
+	at: number; // arrival time (performance.now) — client-only field, added here
+};
 
 // -- the seam: the only things the renderer is allowed to read --
 export const samples: Snapshot[] = [];
@@ -21,23 +17,24 @@ export let id: string | null = null; // live binding: importers see the update w
 const ws = new WebSocket("ws://localhost:8787");
 
 ws.addEventListener("message", (e) => {
-	const data = JSON.parse(e.data); // full protocol typing arrives with shared/protocol.ts (serving 2)
+	const msg = JSON.parse(e.data) as ServerMsg; // assertion — the `type` field narrows the union below
 
-	if (data.type === "welcome") {
-		id = data.payload.id;
-	} else if (data.type === "snapshot") {
-		samples.push({ ...data, at: performance.now() });
+	if (msg.type === "welcome") {
+		id = msg.payload.id;
+	} else if (msg.type === "snapshot") {
+		samples.push({ ...msg, at: performance.now() });
 		if (samples.length > 3) samples.shift();
 	}
 });
 
 // -- input --
-type Key = "w" | "s" | "a" | "d";
+type Key = keyof Input;
 
-const inputs: Record<Key, boolean> = { w: false, s: false, a: false, d: false };
+const inputs: Input = { w: false, s: false, a: false, d: false };
 
 function sendInput() {
-	ws.send(JSON.stringify({ type: "input", payload: inputs }));
+	const msg: ClientMsg = { type: "input", payload: inputs };
+	ws.send(JSON.stringify(msg));
 }
 
 function isGameKey(key: string): key is Key {
