@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { collidesWithAnyPlayer, getRandomPos } from "./helper.ts";
+import { collidesWithAnyPlayer, getRandomPos, hitsSolid } from "./helper.ts";
 import { MAP, SPEED, PLAYER_R } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
@@ -7,7 +7,7 @@ const TICK_MS = 1000 / 30; // 30 ticks per second
 const wss = new WebSocketServer({ port: 8787, host: "0.0.0.0" });
 let tick = 0;
 
-const solids = [...MAP.walls, ...MAP.cabinets].map((r) => ({
+export const solids = [...MAP.walls, ...MAP.cabinets].map((r) => ({
 	x: r.x - PLAYER_R,
 	y: r.y - PLAYER_R,
 	w: r.w + 2 * PLAYER_R,
@@ -29,10 +29,11 @@ const players = new Map<string, Players>();
 
 wss.on("connection", (ws: CustomWebScoket) => {
 	ws.id = crypto.randomUUID();
+	const [sx, sy] = getRandomPos(ws.id, players);
 	const newPlayer: Players = {
 		id: ws.id,
-		x: getRandomPos(),
-		y: getRandomPos(),
+		x: sx,
+		y: sy,
 		inputs: { w: false, s: false, a: false, d: false },
 	};
 	players.set(ws.id, newPlayer);
@@ -85,15 +86,6 @@ setInterval(() => {
 		// rect collision
 		const moveX = len > 0 ? (dx / len) * SPEED : 0;
 		const moveY = len > 0 ? (dy / len) * SPEED : 0;
-
-		const hitsSolid = (px: number, py: number) =>
-			solids.some(
-				(box) =>
-					px >= box.x &&
-					px <= box.x + box.w &&
-					py >= box.y &&
-					py <= box.y + box.h,
-			);
 
 		const nextX = Math.max(10, Math.min(790, player.x + moveX));
 		if (!hitsSolid(nextX, player.y) && !collidesWithAnyPlayer({x: nextX, y: player.y}, player.id, players)) {
