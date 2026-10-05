@@ -14,8 +14,17 @@ export interface WirePlayer {
 	y: number;
 }
 
+// A rectangle in game space (0..800). x,y = top-left corner.
+export interface Rect {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
 export type ClientMsg = { type: "input"; payload: Input };
 
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }
-	| { type: "snapshot"; tick: number; players: WirePlayer[] };
+	| { type: "snapshot"; tick: number; players: WirePlayer[] }
+	| { type: "map"; walls: Rect[]; cabinets: Rect[] };

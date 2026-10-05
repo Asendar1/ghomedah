@@ -1,10 +1,18 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { getRandomPos } from "./helper.ts";
+import { collidesWithAnyPlayer, getRandomPos } from "./helper.ts";
+import { MAP, SPEED, PLAYER_R } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
-const wss = new WebSocketServer({ port: 8787 , host:"0.0.0.0"});
+const wss = new WebSocketServer({ port: 8787, host: "0.0.0.0" });
 let tick = 0;
+
+const solids = [...MAP.walls, ...MAP.cabinets].map((r) => ({
+	x: r.x - PLAYER_R,
+	y: r.y - PLAYER_R,
+	w: r.w + 2 * PLAYER_R,
+	h: r.h + 2 * PLAYER_R,
+}));
 
 interface Players {
 	id: string;
@@ -19,8 +27,6 @@ interface CustomWebScoket extends WebSocket {
 
 const players = new Map<string, Players>();
 
-const SPEED = 5;
-
 wss.on("connection", (ws: CustomWebScoket) => {
 	ws.id = crypto.randomUUID();
 	const newPlayer: Players = {
@@ -32,6 +38,12 @@ wss.on("connection", (ws: CustomWebScoket) => {
 	players.set(ws.id, newPlayer);
 	const welcome: ServerMsg = { type: "welcome", payload: { id: ws.id } };
 	ws.send(JSON.stringify(welcome));
+	const map: ServerMsg = {
+		type: "map",
+		walls: MAP.walls,
+		cabinets: MAP.cabinets,
+	};
+	ws.send(JSON.stringify(map));
 
 	ws.on("message", (rawMsg: string) => {
 		try {
@@ -65,11 +77,33 @@ setInterval(() => {
 		const dy = (i.s ? 1 : 0) - (i.w ? 1 : 0);
 		const len = Math.hypot(dx, dy) || 1;
 
-		player.x += (dx / len) * SPEED;
-		player.y += (dy / len) * SPEED;
+		//btw y here is for the z axis. might rename this later
 
-		player.x = Math.max(10, Math.min(790, player.x));
-		player.y = Math.max(10, Math.min(790, player.y));
+		// TODO (you): collision against MAP.walls / MAP.cabinets goes here.
+		// Inflate rects by PLAYER_R once at module load; nudge the point out per axis.
+
+		// rect collision
+		const moveX = len > 0 ? (dx / len) * SPEED : 0;
+		const moveY = len > 0 ? (dy / len) * SPEED : 0;
+
+		const hitsSolid = (px: number, py: number) =>
+			solids.some(
+				(box) =>
+					px >= box.x &&
+					px <= box.x + box.w &&
+					py >= box.y &&
+					py <= box.y + box.h,
+			);
+
+		const nextX = Math.max(10, Math.min(790, player.x + moveX));
+		if (!hitsSolid(nextX, player.y) && !collidesWithAnyPlayer({x: nextX, y: player.y}, player.id, players)) {
+			player.x = nextX;
+		}
+
+		const nextY = Math.max(10, Math.min(790, player.y + moveY));
+		if (!hitsSolid(player.x, nextY) && !collidesWithAnyPlayer({x: player.x, y: nextY}, player.id, players)) {
+			player.y = nextY;
+		}
 	});
 
 	const snap: ServerMsg = {

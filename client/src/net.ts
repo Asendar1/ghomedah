@@ -6,8 +6,11 @@ export type Snapshot = SnapshotMsg & {
 	at: number;
 };
 
+type MapMsg = Extract<ServerMsg, { type: "map" }>;
+
 export const samples: Snapshot[] = [];
 export let id: string | null = null;
+export let mapData: MapMsg | null = null;
 
 const ws = new WebSocket("ws://192.168.100.2:8787");
 
@@ -19,6 +22,8 @@ ws.addEventListener("message", (e) => {
 	} else if (msg.type === "snapshot") {
 		samples.push({ ...msg, at: performance.now() });
 		if (samples.length > 3) samples.shift();
+	} else if (msg.type === "map") {
+		mapData = msg;
 	}
 });
 

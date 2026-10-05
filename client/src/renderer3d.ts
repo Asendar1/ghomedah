@@ -1,5 +1,6 @@
 import * as three from "three";
-import { samples, id } from "./net";
+import type { Rect } from "@ghomedah/shared";
+import { samples, id, mapData } from "./net";
 
 const INTERP_MS = 66;
 
@@ -30,6 +31,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const planeMat = new three.MeshBasicMaterial({ color: "#ffffff" });
 	const playerMat = new three.MeshBasicMaterial({ color: "#00ffff" });
 	const enemyMat = new three.MeshBasicMaterial({ color: "#fafa00" });
+	const wallMat = new three.MeshBasicMaterial({ color: "#1c1c1c" }); // palette: yours
+	const cabinetMat = new three.MeshBasicMaterial({ color: "#4a4a4a" });
 	const outlineMaterial = new three.MeshBasicMaterial({
 		color: 0x000000,
 		side: three.BackSide, // only renders interior/back faces
@@ -43,8 +46,26 @@ export function startGame(canvas: HTMLCanvasElement) {
 
 	// per-run state — lives and dies with this startGame call (StrictMode-safe)
 	const playerMap = new Map<string, three.Mesh>();
+	let builtMap = false;
+
+	// the office — one box per rect, built once when the map message arrives
+	function addBox(r: Rect, height: number, mat: three.Material) {
+		const c = toWorld(r.x + r.w / 2, r.y + r.h / 2);
+		const box = new three.Mesh(
+			new three.BoxGeometry(r.w * SCALE, height, r.h * SCALE),
+			mat,
+		);
+		box.position.set(c.x, height / 2, c.z);
+		scene.add(box);
+	}
 
 	function animate(time: number) {
+		if (mapData && !builtMap) {
+			builtMap = true;
+			for (const r of mapData.walls) addBox(r, 2.5, wallMat);
+			for (const r of mapData.cabinets) addBox(r, 1.1, cabinetMat);
+		}
+
 		if (samples.length) {
 			const render_at = performance.now() - INTERP_MS;
 
@@ -77,19 +98,19 @@ export function startGame(canvas: HTMLCanvasElement) {
 					playerMap.set(p.id, mesh);
 				}
 
-				// if a websocket dies. so no frozen mesh is left hanging
-				for (const [pid, mesh] of playerMap) {
-					if (!b.players.some((p) => p.id === pid)) {
-						scene.remove(mesh);
-						playerMap.delete(pid);
-					}
-				}
-
 				const q = a.players.find((o) => o.id === p.id);
 				const gx = q ? q.x + (p.x - q.x) * t : p.x;
 				const gy = q ? q.y + (p.y - q.y) * t : p.y;
 				const w = toWorld(gx, gy);
 				mesh.position.set(w.x, 1.5, w.z);
+			}
+
+			// if a websocket dies. so no frozen mesh is left hanging
+			for (const [pid, mesh] of playerMap) {
+				if (!b.players.some((p) => p.id === pid)) {
+					scene.remove(mesh);
+					playerMap.delete(pid);
+				}
 			}
 
 			const hue = (time / 2000) % 1;
