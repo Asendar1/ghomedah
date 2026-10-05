@@ -79,10 +79,6 @@ setInterval(() => {
 		const len = Math.hypot(dx, dy) || 1;
 
 		//btw y here is for the z axis. might rename this later
-
-		// TODO (you): collision against MAP.walls / MAP.cabinets goes here.
-		// Inflate rects by PLAYER_R once at module load; nudge the point out per axis.
-
 		// rect collision
 		const moveX = len > 0 ? (dx / len) * SPEED : 0;
 		const moveY = len > 0 ? (dy / len) * SPEED : 0;
