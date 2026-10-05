@@ -1,7 +1,8 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { collidesWithAnyPlayer, getRandomPos, hitsSolid } from "./helper.ts";
-import { MAP, SPEED, PLAYER_R } from "./config.ts";
-import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
+import { collidesWithAnyPlayer, getRandomPos} from "./helper.ts";
+import { MAP, SEARCH_RANGE, SPEED, PLAYER_R } from "./config.ts";
+import type { ClientMsg, Input, ServerMsg, Cabinet } from "@ghomedah/shared";
+import { contains } from "@ghomedah/shared/geometry";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
 const wss = new WebSocketServer({ port: 8787, host: "0.0.0.0" });
@@ -43,12 +44,13 @@ wss.on("connection", (ws: CustomWebScoket) => {
 		type: "map",
 		walls: MAP.walls,
 		cabinets: MAP.cabinets,
+		searchRange: SEARCH_RANGE,
 	};
 	ws.send(JSON.stringify(map));
 
 	ws.on("message", (rawMsg: string) => {
 		try {
-			const msg = JSON.parse(rawMsg) as ClientMsg; // compile-time assertion — the runtime whitelist below stays the real defense
+			const msg = JSON.parse(rawMsg) as ClientMsg;
 
 			if (msg.type === "input") {
 				const player = players.get(ws.id);
@@ -84,12 +86,12 @@ setInterval(() => {
 		const moveY = len > 0 ? (dy / len) * SPEED : 0;
 
 		const nextX = Math.max(10, Math.min(790, player.x + moveX));
-		if (!hitsSolid(nextX, player.y) && !collidesWithAnyPlayer({x: nextX, y: player.y}, player.id, players)) {
+		if (!solids.some((b) => contains(b, nextX, player.y)) && !collidesWithAnyPlayer({x: nextX, y: player.y}, player.id, players)) {
 			player.x = nextX;
 		}
 
 		const nextY = Math.max(10, Math.min(790, player.y + moveY));
-		if (!hitsSolid(player.x, nextY) && !collidesWithAnyPlayer({x: player.x, y: nextY}, player.id, players)) {
+		if (!solids.some((b) => contains(b, player.x, nextY)) && !collidesWithAnyPlayer({x: player.x, y: nextY}, player.id, players)) {
 			player.y = nextY;
 		}
 	});

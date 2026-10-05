@@ -1,6 +1,3 @@
-// The wire contract: every shape that crosses the websocket lives here.
-// Rule: wire shapes → this file; process-internal shapes → their own package.
-
 export interface Input {
 	w: boolean;
 	s: boolean;
@@ -22,9 +19,14 @@ export interface Rect {
 	h: number;
 }
 
-export type ClientMsg = { type: "input"; payload: Input };
+export interface Cabinet extends Rect {
+	id: number;
+	search: boolean;
+}
+
+export type ClientMsg = { type: "input"; payload: Input } | { type: "search" };
 
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }
 	| { type: "snapshot"; tick: number; players: WirePlayer[] }
-	| { type: "map"; walls: Rect[]; cabinets: Rect[] };
+	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number };

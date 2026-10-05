@@ -1,6 +1,7 @@
 import * as three from "three";
 import type { Rect } from "@ghomedah/shared";
 import { samples, id, mapData } from "./net";
+import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const INTERP_MS = 66;
 
@@ -44,6 +45,10 @@ export function startGame(canvas: HTMLCanvasElement) {
 	plane.rotation.x = -Math.PI / 2;
 	scene.add(plane);
 
+	// cabient outline when close by it
+	const edges = new three.EdgesGeometry(new three.BoxGeometry());
+	const outline = new three.LineSegments(edges, outlineMaterial);
+
 	// per-run state — lives and dies with this startGame call (StrictMode-safe)
 	const playerMap = new Map<string, three.Mesh>();
 	let builtMap = false;
@@ -59,11 +64,17 @@ export function startGame(canvas: HTMLCanvasElement) {
 		scene.add(box);
 	}
 
-	function animate(time: number) {
+	let searchBoxes: Rect[] = [];
+
+	function animate() {
 		if (mapData && !builtMap) {
 			builtMap = true;
-			for (const r of mapData.walls) addBox(r, 2.5, wallMat);
-			for (const r of mapData.cabinets) addBox(r, 1.1, cabinetMat);
+			const md = mapData;
+			for (const r of md.walls) addBox(r, 2.5, wallMat);
+			for (const r of md.cabinets) addBox(r, 1.1, cabinetMat);
+			searchBoxes = md.cabinets.map((c) => inflate(c, md.searchRange));
+			const c0 = md.cabinets[0]; // all cabinets share size
+			if (c0) outline.scale.set(c0.w * SCALE, 1.1, c0.h * SCALE);
 		}
 
 		if (samples.length) {
@@ -103,6 +114,23 @@ export function startGame(canvas: HTMLCanvasElement) {
 				const gy = q ? q.y + (p.y - q.y) * t : p.y;
 				const w = toWorld(gx, gy);
 				mesh.position.set(w.x, 1.5, w.z);
+
+				//box outline
+				if (p.id === id && searchBoxes.length) {
+					const closeCabinet = mapData?.cabinets.find(
+						(c, i) => !c.search && contains(searchBoxes[i], gx, gy),
+					);
+					if (closeCabinet) {
+						const { x, z } = toWorld(
+							closeCabinet.x + closeCabinet.w / 2,
+							closeCabinet.y + closeCabinet.h / 2,
+						);
+						outline.position.set(x, 0.55, z);
+						scene.add(outline);
+					} else {
+						scene.remove(outline);
+					}
+				}
 			}
 
 			// if a websocket dies. so no frozen mesh is left hanging
@@ -112,9 +140,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 					playerMap.delete(pid);
 				}
 			}
-
-			const hue = (time / 2000) % 1;
-			outlineMaterial.color.setHSL(hue, 1, 0.5);
 		}
 
 		renderer.render(scene, camera);
