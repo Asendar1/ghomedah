@@ -1,39 +1,94 @@
 import * as three from "three";
+import { samples, id } from "./net";
+
+const INTERP_MS = 66;
+
+// The server speaks px: positions in 0..800. This arena is 30 world units wide.
+// This is the border crossing between the two coordinate spaces.
+const WORLD = 30;
+const SCALE = WORLD / 800;
+function toWorld(gx: number, gy: number) {
+	return { x: (gx - 400) * SCALE, z: (gy - 400) * SCALE };
+}
 
 export function startGame(canvas: HTMLCanvasElement) {
 	const scene = new three.Scene();
 	scene.background = new three.Color("#040355");
-	const camera = new three.PerspectiveCamera(
-		75,
-		canvas.width / canvas.height,
-		0.1,
-		800,
-	);
+
+	const camera = new three.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 800);
+	camera.position.set(0, 20, 12);
+	camera.lookAt(0, 0, 0);
+
 	const renderer = new three.WebGLRenderer({ canvas });
 	renderer.setSize(canvas.width, canvas.height);
 
+	const planeMat = new three.MeshBasicMaterial({ color: "#ffffff" });
+	const playerMat = new three.MeshBasicMaterial({ color: "#00ffff" });
+	const enemyMat = new three.MeshBasicMaterial({ color: "#fafa00" });
+	const outlineMaterial = new three.MeshBasicMaterial({
+		color: 0x000000,
+		side: three.BackSide, // only renders interior/back faces
+	});
 
-	const geometry = new three.BoxGeometry( 1, 1, 1);
-	const material = new three.MeshBasicMaterial({color : "#00ff00"});
-	const cube = new three.Mesh(geometry, material);
-	scene.add(cube);
-
-	const plane_geo = new three.PlaneGeometry(3,3);
-	const plane = new three.Mesh(plane_geo, material);
+	const playerGeo = new three.CapsuleGeometry(1, 1);
+	const planeGeo = new three.PlaneGeometry(WORLD, WORLD);
+	const plane = new three.Mesh(planeGeo, planeMat);
 	plane.rotation.x = -Math.PI / 2;
 	scene.add(plane);
 
-	camera.position.y = 5;
-	camera.position.z = 0;
-	camera.rotation.x = -Math.PI / 2;
+	// per-run state — lives and dies with this startGame call (StrictMode-safe)
+	const playerMap = new Map<string, three.Mesh>();
 
-	function animate (time) {
-		cube.rotation.x = time / 2000;
-		cube.rotation.z = time/ 300;
+	function animate(time: number) {
+		if (samples.length) {
+			const render_at = performance.now() - INTERP_MS;
 
-		const hue = (time / 5000) % 1;
-		material.color.setHSL(hue, 1, 0.5);
+			let a = samples[0];
+			let b = samples[samples.length - 1];
+			for (let i = 0; i < samples.length - 1; i++) {
+				if (render_at <= samples[i + 1].at) {
+					a = samples[i];
+					b = samples[i + 1];
+					break;
+				}
+			}
+
+			const span = b.at - a.at;
+			const t = span > 0 ? Math.min(1, Math.max(0, (render_at - a.at) / span)) : 1;
+
+			for (const p of b.players) {
+				let mesh = playerMap.get(p.id);
+				if (!mesh) {
+					// first time seeing this player: make their mesh (self = cyan + outline)
+					const isMe = p.id === id;
+					mesh = new three.Mesh(playerGeo, isMe ? playerMat : enemyMat);
+					if (isMe) {
+						const outline = new three.Mesh(playerGeo, outlineMaterial);
+						outline.scale.setScalar(1.05);
+						mesh.add(outline);
+					}
+					scene.add(mesh);
+					playerMap.set(p.id, mesh);
+				}
+
+				const q = a.players.find((o) => o.id === p.id);
+				const gx = q ? q.x + (p.x - q.x) * t : p.x;
+				const gy = q ? q.y + (p.y - q.y) * t : p.y;
+				const w = toWorld(gx, gy);
+				mesh.position.set(w.x, 1.5, w.z);
+			}
+
+			const hue = (time / 2000) % 1;
+			outlineMaterial.color.setHSL(hue, 1, 0.5);
+		}
+
 		renderer.render(scene, camera);
 	}
+
 	renderer.setAnimationLoop(animate);
+
+	return () => {
+		renderer.setAnimationLoop(null);
+		renderer.dispose();
+	};
 }

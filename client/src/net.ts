@@ -1,23 +1,18 @@
-// Transport + world state.
-// Owns: the socket, your id, the snapshot ring, keyboard input.
-// The renderer reads across the seam: samples + id.
-
 import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
 type SnapshotMsg = Extract<ServerMsg, { type: "snapshot" }>;
 
 export type Snapshot = SnapshotMsg & {
-	at: number; // arrival time (performance.now) — client-only field, added here
+	at: number;
 };
 
-// -- the seam: the only things the renderer is allowed to read --
 export const samples: Snapshot[] = [];
-export let id: string | null = null; // live binding: importers see the update when welcome lands
+export let id: string | null = null;
 
-const ws = new WebSocket("ws://localhost:8787");
+const ws = new WebSocket("ws://192.168.100.2:8787");
 
 ws.addEventListener("message", (e) => {
-	const msg = JSON.parse(e.data) as ServerMsg; // assertion — the `type` field narrows the union below
+	const msg = JSON.parse(e.data) as ServerMsg;
 
 	if (msg.type === "welcome") {
 		id = msg.payload.id;
@@ -57,7 +52,6 @@ function onKeyUp(e: KeyboardEvent) {
 	}
 }
 
-// alt-tab while holding a key: the browser never sends the keyup — clear so you don't run forever
 function onBlur() {
 	for (const k of Object.keys(inputs) as Key[]) inputs[k] = false;
 	sendInput();

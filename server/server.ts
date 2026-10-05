@@ -3,10 +3,9 @@ import { getRandomPos } from "./helper.ts";
 import type { ClientMsg, Input, ServerMsg } from "@ghomedah/shared";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
-const wss = new WebSocketServer({ port: 8787 });
+const wss = new WebSocketServer({ port: 8787 , host:"0.0.0.0"});
 let tick = 0;
 
-// server-internal storage shape — NOT part of the wire contract
 interface Players {
 	id: string;
 	x: number;
