@@ -15,7 +15,12 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const scene = new three.Scene();
 	scene.background = new three.Color("#040355");
 
-	const camera = new three.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 800);
+	const camera = new three.PerspectiveCamera(
+		75,
+		canvas.width / canvas.height,
+		0.1,
+		800,
+	);
 	camera.position.set(0, 20, 12);
 	camera.lookAt(0, 0, 0);
 
@@ -54,7 +59,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 			}
 
 			const span = b.at - a.at;
-			const t = span > 0 ? Math.min(1, Math.max(0, (render_at - a.at) / span)) : 1;
+			const t =
+				span > 0 ? Math.min(1, Math.max(0, (render_at - a.at) / span)) : 1;
 
 			for (const p of b.players) {
 				let mesh = playerMap.get(p.id);
@@ -69,6 +75,14 @@ export function startGame(canvas: HTMLCanvasElement) {
 					}
 					scene.add(mesh);
 					playerMap.set(p.id, mesh);
+				}
+
+				// if a websocket dies. so no frozen mesh is left hanging
+				for (const [pid, mesh] of playerMap) {
+					if (!b.players.some((p) => p.id === pid)) {
+						scene.remove(mesh);
+						playerMap.delete(pid);
+					}
 				}
 
 				const q = a.players.find((o) => o.id === p.id);
