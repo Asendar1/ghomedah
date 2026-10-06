@@ -10,7 +10,7 @@ Browser multiplayer office hunt: everyone searches cabinets, one finds the poiso
 - **Search:** hold **E** next to a cabinet. The bar over your head fills. One cabinet holds the poison — the finder becomes the **hunter**.
 - **Survive:** searching happens in a dimly lit office — then the poison is found and the lights die: near-black, with only flashlight cones to see by. **F** toggles your beam (off hides it from everyone, but leaves you nearly blind). Use walls, break line of sight, don't get cornered.
 - **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you. With 30 seconds left — and again with 10 — the hunt flashes a glowing ghost of every hider where they stand: a beacon for the hunter.
-- Preys win if at least one survives the 90 seconds; hunters win by converting everyone. Rounds reset themselves.
+- Preys win if at least one survives the 90 seconds; hunters win by converting everyone. Rounds reset themselves — the header counts them, and the scoreboard tracks a running total: **+25** find the poison, **+75** per infection, **+100** survive the hunt. Type a name on load.
 
 ## Run it locally
 
@@ -28,7 +28,7 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 - **Server-authoritative tick** at a nominal 30 Hz: clients only ever send *intent* (input bits, one attack event); the tick owns movement, collisions, search timers, phases and infection, and broadcasts snapshots.
 - **Protocol** (`shared/protocols.ts`): JSON over ws. Snapshots ~30/s/room; the static map is sent once per connection, never in the stream.
 - **Rooms** are the unit of world state — `?room=` codes, per-room cloned cabinet flags, empty rooms garbage-collected. Everything degrades to one room with zero code changes.
-- **Phases**: SEARCH → HUNT (90 s) → END (10 s) → auto-reset, all room state. One poison cabinet is planted per round.
+- **Phases**: SEARCH → HUNT (90 s) → END (10 s) → auto-reset, all room state. One poison cabinet is planted per round; the round counter and per-player scores live in room state, and the reset broadcasts `newRound` so clients refresh their cabinet visuals (lids close, search outlines return).
 - **Interactions**: search is a held bit (a state); attack is a `{type:"attack"}` event (a tap must not fall between ticks). Both are queued by handlers and resolved only inside the tick.
 - **Role vision** is pure client rendering — one ambient level for the whole room (dim during SEARCH, near-black during HUNT) plus a spotlight cone per player aimed by their movement; the hunter's only edge is a ~28% wider camera. The **F** flashlight toggle is one display-only bit relayed input → snapshot (`lit`) — no game logic reads it.
 
@@ -51,12 +51,13 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 
 ## Checks
 
-No test framework — five runnable probes instead:
+No test framework — six runnable probes instead:
 
 - `node server/probe-ws.cjs` — a fresh client must receive welcome + map + phase (deploy smoke test; pass a `ws://…` URL for any host).
 - `node server/probe-infect.cjs` — the full infection rule, end to end: no click = no convert, one click converts exactly one prey, the cooldown drops early clicks and expires.
 - `node server/probe-flash.cjs` — the flashlight toggle relay: off/on reaches every other client and late joiners, and a payload that omits `lit` defaults back to on.
 - `node server/probe-ghost.cjs` — the late-hunt ghost flashes: none before the first, exactly one 1 s flash with 30 s left and one with 10 s left at where the prey stood, hunters never get one.
+- `node server/probe-round.cjs` — rounds + points end to end (staged hunt 10 s / result 2 s): +25 find, +75 infect, +100 survive, name relay, and the reset into round 2 with scores kept, roles back to prey and the `newRound` broadcast.
 - `node server/bots.cjs --spawn` — the invariant + cadence load check from the table above.
 
 ## Next

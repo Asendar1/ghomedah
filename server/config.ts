@@ -24,6 +24,10 @@ export const GHOST_VISIBLE = 1_000;
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;
 
+// Round scoring (points), awarded live: find the poison, per infection, and
+// surviving the hunt with time left on the clock. Tune by feel.
+export const SCORE = { find: 25, infect: 75, survive: 100 };
+
 // Infection reach in px — a TAPPED E (one swing) converts the nearest prey
 // within this. Must exceed the 52px movement standoff; 55 = pressed up against
 // them. Tune by feel.

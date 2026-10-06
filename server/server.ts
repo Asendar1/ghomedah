@@ -17,6 +17,7 @@ import {
 	INFECT_REACH,
 	INFECT_COOLDOWN,
 	MAX_PLAYERS,
+	SCORE,
 } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg, Cabinet, Phase, Role } from "@ghomedah/shared";
 import { contains, inflate } from "@ghomedah/shared/geometry";
@@ -83,6 +84,8 @@ interface Players {
 	ghostX: number; // where the ghost was captured at cycle start
 	ghostY: number;
 	ghost: { x: number; y: number } | null; // visible NOW (server-decided), else null
+	score: number; // session points — survives round resets
+	name: string; // sanitized display name (default P1, P2, ...)
 }
 
 interface CustomWebScoket extends WebSocket {
@@ -97,6 +100,8 @@ interface Room {
 	endsAt: number; // wall-ms deadline for the current phase (0 = none)
 	winner: "prey" | "hunters" | null;
 	poisonId: number;
+	round: number; // bumps every resetRound
+	nextNum: number; // ever-increasing seat number for default names (P1, P2, ...)
 }
 
 const rooms = new Map<string, Room>();
@@ -110,7 +115,8 @@ function endRound(room: Room, winner: "prey" | "hunters", now: number) {
 	room.phase = "END";
 	room.endsAt = now + END_TIME;
 	room.winner = winner;
-	send(room, { type: "phase", phase: "END", endsAt: room.endsAt, winner });
+	if (winner === "prey") for (const p of room.players.values()) if (p.role === "prey") p.score += SCORE.survive;
+	send(room, { type: "phase", phase: "END", endsAt: room.endsAt, winner, round: room.round });
 }
 
 function resetRound(room: Room) {
@@ -126,8 +132,12 @@ function resetRound(room: Room) {
 	room.phase = "SEARCH";
 	room.endsAt = 0;
 	room.winner = null;
+	room.round++;
 	room.poisonId = 1 + Math.floor(Math.random() * MAP.cabinets.length);
-	send(room, { type: "phase", phase: "SEARCH", endsAt: 0, winner: null });
+	// clients mirror this: close every lid + restore the search outline (their
+	// cabinet copy is otherwise stale forever)
+	send(room, { type: "newRound" });
+	send(room, { type: "phase", phase: "SEARCH", endsAt: 0, winner: null, round: room.round });
 }
 
 wss.on("connection", (ws: CustomWebScoket, req) => {
@@ -142,6 +152,8 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 			endsAt: 0,
 			winner: null,
 			poisonId: 1 + Math.floor(Math.random() * MAP.cabinets.length),
+			round: 1,
+			nextNum: 1,
 		};
 		rooms.set(code, room);
 	}
@@ -161,6 +173,8 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		ghostX: 0,
 		ghostY: 0,
 		ghost: null,
+		score: 0,
+		name: `P${room.nextNum++}`,
 	};
 	room.players.set(ws.id, newPlayer);
 	room.sockets.add(ws);
@@ -174,7 +188,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		searchTime: SEARCH_TIME,
 	};
 	ws.send(JSON.stringify(map));
-	const ph: ServerMsg = { type: "phase", phase: room.phase, endsAt: room.endsAt, winner: room.winner };
+	const ph: ServerMsg = { type: "phase", phase: room.phase, endsAt: room.endsAt, winner: room.winner, round: room.round };
 	ws.send(JSON.stringify(ph));
 
 	ws.on("message", (rawMsg: string) => {
@@ -197,6 +211,13 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 			} else if (msg.type === "attack") {
 				// handlers only queue intent — the tick owns the swing + world mutation
 				player.wantAttack = true;
+			} else if (msg.type === "name") {
+				// display only: trim, strip control chars, cap 12; empty = keep the default
+				const name = String(msg.payload?.name ?? "")
+					.replace(/[\u0000-\u001f\u007f]/g, "")
+					.trim()
+					.slice(0, 12);
+				if (name) player.name = name;
 			}
 		} catch (err) {
 			console.error("failed to parse incoming player message: ", err);
@@ -266,9 +287,10 @@ setInterval(() => {
 					send(room, { type: "boxSearched", id: nearCabinet.id });
 					if (nearCabinet.id === room.poisonId) {
 						player.role = "hunter";
+						player.score += SCORE.find;
 						room.phase = "HUNT";
 						room.endsAt = now + HUNT_TIME;
-						send(room, { type: "phase", phase: "HUNT", endsAt: room.endsAt, winner: null });
+						send(room, { type: "phase", phase: "HUNT", endsAt: room.endsAt, winner: null, round: room.round });
 					}
 				}
 			} else {
@@ -316,7 +338,10 @@ setInterval(() => {
 						target = v;
 					}
 				}
-				if (target) target.role = "zombie";
+				if (target) {
+					target.role = "zombie";
+					h.score += SCORE.infect;
+				}
 			}
 
 			const preyLeft = [...room.players.values()].filter((p) => p.role === "prey").length;
@@ -334,7 +359,7 @@ setInterval(() => {
 			tick,
 			players: Array.from(
 				room.players.values(),
-				({ id, x, y, role, inputs, ghost }) => ({ id, x, y, role, lit: inputs.lit, ghost }),
+				({ id, name, x, y, role, inputs, ghost, score }) => ({ id, name, x, y, role, lit: inputs.lit, ghost, score }),
 			),
 		};
 		send(room, snap);

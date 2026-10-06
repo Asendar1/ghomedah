@@ -30,6 +30,10 @@ function send(msg: ClientMsg) {
 	if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+export function setName(name: string) {
+	send({ type: "name", payload: { name } });
+}
+
 ws.addEventListener("message", (e) => {
 	const msg = JSON.parse(e.data) as ServerMsg;
 
@@ -43,6 +47,10 @@ ws.addEventListener("message", (e) => {
 	} else if (msg.type === "boxSearched") {
 		const box = mapData?.cabinets.find((c) => c.id === msg.id);
 		if (box) box.search = true;
+	} else if (msg.type === "newRound") {
+		// fresh round: every cabinet is unsearched again. Mutating these same
+		// objects is also what closes the renderer's lids + restores the outline.
+		mapData?.cabinets.forEach((c) => (c.search = false));
 	} else if (msg.type === "phase") {
 		phase = msg;
 		for (const fn of phaseListeners) fn(msg);
