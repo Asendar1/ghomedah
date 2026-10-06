@@ -1,4 +1,8 @@
 import { WebSocketServer, WebSocket } from "ws";
+import { createServer } from "node:http";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { collidesWithAnyPlayer, getRandomPos } from "./helper.ts";
 import {
 	MAP,
@@ -16,7 +20,51 @@ import type { ClientMsg, Input, ServerMsg, Cabinet, Phase, Role } from "@ghomeda
 import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
-const wss = new WebSocketServer({ port: 8787, host: "0.0.0.0" });
+
+// one process serves everything in prod: the built client, /health, /stats and
+// the ws upgrades. In dev the vite dev server proxies /ws here (see client/vite.config.ts).
+const PORT = Number(process.env.PORT) || 8787;
+const DIST = fileURLToPath(new URL("../client/dist", import.meta.url)); // repo-relative, cwd-independent
+const TYPES: Record<string, string> = {
+	".html": "text/html",
+	".js": "text/javascript",
+	".css": "text/css",
+	".svg": "image/svg+xml",
+	".png": "image/png",
+	".ico": "image/x-icon",
+	".json": "application/json",
+	".map": "application/json",
+};
+
+const httpServer = createServer((req, res) => {
+	const url = (req.url ?? "/").split("?")[0] ?? "/";
+	if (url === "/health") {
+		res.setHeader("content-type", "application/json");
+		res.end('{"ok":true}');
+		return;
+	}
+	if (url === "/stats") {
+		res.setHeader("content-type", "application/json");
+		res.end(
+			JSON.stringify({
+				rooms: rooms.size,
+				players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0),
+				uptime: Math.round(process.uptime()),
+			}),
+		);
+		return;
+	}
+	const file = path.normalize(path.join(DIST, url === "/" ? "index.html" : url.slice(1)));
+	if (!file.startsWith(DIST + path.sep) || !existsSync(file)) {
+		res.statusCode = 404;
+		res.end("not found");
+		return;
+	}
+	res.setHeader("content-type", TYPES[path.extname(file)] ?? "application/octet-stream");
+	res.end(readFileSync(file));
+});
+const wss = new WebSocketServer({ server: httpServer });
+httpServer.listen(PORT, "0.0.0.0");
 let tick = 0;
 let lastTickAt = Date.now();
 
