@@ -259,7 +259,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 					beam = p.id === id ? cone : mkFlashlight(512, 22);
 					playerCones.set(p.id, beam);
 				}
-				beam.visible = true;
+				beam.visible = p.lit; // F toggles it; hidden beams still track, so re-enabling aims right
 				beam.position.set(w.x, 2.2, w.z);
 				beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
 

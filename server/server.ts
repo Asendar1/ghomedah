@@ -144,7 +144,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		id: ws.id,
 		x: sx,
 		y: sy,
-		inputs: { w: false, s: false, a: false, d: false, e: false },
+		inputs: { w: false, s: false, a: false, d: false, e: false, lit: true },
 		searchT: 0,
 		role: "prey",
 		wantAttack: false,
@@ -180,6 +180,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 					a: !!p?.a,
 					d: !!p?.d,
 					e: !!p?.e,
+					lit: p?.lit ?? true, // display-only relay; absent (old client/bot) = on
 				};
 			} else if (msg.type === "attack") {
 				// handlers only queue intent — the tick owns the swing + world mutation
@@ -299,7 +300,10 @@ setInterval(() => {
 		const snap: ServerMsg = {
 			type: "snapshot",
 			tick,
-			players: Array.from(room.players.values(), ({ id, x, y, role }) => ({ id, x, y, role })),
+			players: Array.from(
+				room.players.values(),
+				({ id, x, y, role, inputs }) => ({ id, x, y, role, lit: inputs.lit }),
+			),
 		};
 		send(room, snap);
 	});

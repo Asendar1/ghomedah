@@ -6,10 +6,10 @@ Browser multiplayer office hunt: everyone searches cabinets, one finds the poiso
 
 ## How to play (30 seconds)
 
-- **Move:** WASD. The camera is fixed — the whole office is your board.
+- **Move:** WASD on a close follow-cam that shows only the room around you.
 - **Search:** hold **E** next to a cabinet. The bar over your head fills. One cabinet holds the poison — the finder becomes the **hunter**.
-- **Survive:** as prey you see only a flashlight cone. Use walls, break line of sight, don't get cornered.
-- **Hunt:** as hunter/zombie you see the whole map. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you.
+- **Survive:** the office is dark — a dim room and your flashlight cone, nothing else. **F** toggles the light: off hides your beam from everyone, but leaves you nearly blind. Use walls, break line of sight, don't get cornered.
+- **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you.
 - Preys win if at least one survives the 90 seconds; hunters win by converting everyone. Rounds reset themselves.
 
 ## Run it locally
@@ -30,7 +30,7 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 - **Rooms** are the unit of world state — `?room=` codes, per-room cloned cabinet flags, empty rooms garbage-collected. Everything degrades to one room with zero code changes.
 - **Phases**: SEARCH → HUNT (90 s) → END (10 s) → auto-reset, all room state. One poison cabinet is planted per round.
 - **Interactions**: search is a held bit (a state); attack is a `{type:"attack"}` event (a tap must not fall between ticks). Both are queued by handlers and resolved only inside the tick.
-- **Role vision** is pure client rendering — prey get a dim ambient + a spotlight cone that follows your movement; hunter/zombies get full light. Zero netcode involvement.
+- **Role vision** is pure client rendering — everyone gets the same dim ambient + a spotlight cone aimed by their movement; the hunter's only edge is a ~28% wider camera. The **F** flashlight toggle is one display-only bit relayed input → snapshot (`lit`) — no game logic reads it.
 
 ## Engineering notes
 
@@ -51,10 +51,11 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 
 ## Checks
 
-No test framework — three runnable probes instead:
+No test framework — four runnable probes instead:
 
 - `node server/probe-ws.cjs` — a fresh client must receive welcome + map + phase (deploy smoke test; pass a `ws://…` URL for any host).
 - `node server/probe-infect.cjs` — the full infection rule, end to end: no click = no convert, one click converts exactly one prey, the cooldown drops early clicks and expires.
+- `node server/probe-flash.cjs` — the flashlight toggle relay: off/on reaches every other client and late joiners, and a payload that omits `lit` defaults back to on.
 - `node server/bots.cjs --spawn` — the invariant + cadence load check from the table above.
 
 ## Next

@@ -52,8 +52,10 @@ ws.addEventListener("message", (e) => {
 // -- input --
 type Key = keyof Input;
 
-// e is a held "I want to search" bit — the server checks you're near a cabinet
-export const inputs: Input = { w: false, s: false, a: false, d: false, e: false };
+// e is a held "I want to search" bit — the server checks you're near a cabinet.
+// lit is a TOGGLE (F flips it client-side), not a held key — it survives blur
+// and is only ever relayed to other clients (display-only).
+export const inputs: Input = { w: false, s: false, a: false, d: false, e: false, lit: true };
 
 function sendInput() {
 	send({ type: "input", payload: inputs });
@@ -65,6 +67,15 @@ function isGameKey(key: string): key is Key {
 
 function onKeyDown(e: KeyboardEvent) {
 	const key = e.key.toLowerCase();
+	if (key === "f") {
+		// flashlight toggle — a state, not a held bit. e.repeat guard: holding F
+		// must not strobe the beam.
+		if (!e.repeat) {
+			inputs.lit = !inputs.lit;
+			sendInput();
+		}
+		return;
+	}
 	if (isGameKey(key) && !inputs[key]) {
 		inputs[key] = true;
 		sendInput();
@@ -80,7 +91,8 @@ function onKeyUp(e: KeyboardEvent) {
 }
 
 function onBlur() {
-	for (const k of Object.keys(inputs) as Key[]) inputs[k] = false;
+	// clear held keys only — lit is a toggle and must survive alt-tab
+	for (const k of Object.keys(inputs) as Key[]) if (k !== "lit") inputs[k] = false;
 	sendInput();
 }
 

@@ -4,6 +4,7 @@ export interface Input {
 	a: boolean;
 	d: boolean;
 	e: boolean; // hold-E: wants to search. The server checks you're actually near a cabinet.
+	lit: boolean; // flashlight toggle (F flips it client-side). Display-only: the server relays it so every client can hide that player's beam.
 }
 
 export type Phase = "SEARCH" | "HUNT" | "END";
@@ -14,6 +15,7 @@ export interface WirePlayer {
 	x: number;
 	y: number;
 	role: Role;
+	lit: boolean; // flashlight on — display-only relay of that player's input bit
 }
 
 // A rectangle in game space (0..800). x,y = top-left corner.
