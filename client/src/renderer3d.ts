@@ -21,6 +21,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const camera = new three.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
 
 	const renderer = new three.WebGLRenderer({ canvas });
+	renderer.shadowMap.enabled = true; // walls and cabinets must block the flashlight
+	renderer.shadowMap.type = three.PCFSoftShadowMap;
 	// fill the window; refit on resize (the canvas element is styled 100%)
 	const setSize = () => {
 		const w = window.innerWidth;
@@ -50,8 +52,13 @@ export function startGame(canvas: HTMLCanvasElement) {
 	scene.add(ambient);
 	// prey flashlight — follows the self figure, points where you walk
 	const cone = new three.SpotLight(VISION.cone.color, VISION.cone.intensity, VISION.cone.dist, VISION.cone.angle, 0.45, 1.2);
-	cone.position.set(0, 2.6, 0);
+	cone.position.set(0, 2.2, 0);
 	cone.target.position.set(0, 0, 1);
+	cone.castShadow = true;
+	cone.shadow.mapSize.set(1024, 1024);
+	cone.shadow.camera.near = 0.5;
+	cone.shadow.camera.far = 40;
+	cone.shadow.bias = -0.0015; // kill acne on flat Lambert floor
 	scene.add(cone, cone.target);
 
 	const planeMat = new three.MeshLambertMaterial({ color: "#e8e8ea" });
@@ -70,6 +77,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const planeGeo = new three.PlaneGeometry(120, 120); // bigger than the arena so widescreen shows floor, not void
 	const plane = new three.Mesh(planeGeo, planeMat);
 	plane.rotation.x = -Math.PI / 2;
+	plane.receiveShadow = true;
 	scene.add(plane);
 
 	// cabient outline when close by it
@@ -108,6 +116,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 			mat,
 		);
 		box.position.set(c.x, height / 2, c.z);
+		box.castShadow = true;
+		box.receiveShadow = true;
 		scene.add(box);
 	}
 
@@ -121,6 +131,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 			new three.BoxGeometry(r.w * SCALE, 0.06, r.h * SCALE),
 			lidMat,
 		);
+		lid.castShadow = true;
 		lid.position.z = halfH;
 		hinge.add(lid);
 		scene.add(hinge);
@@ -237,8 +248,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 					ambient.intensity = full ? VISION.full.intensity : VISION.dark.intensity;
 					cone.visible = !full;
 					if (!full) {
-						cone.position.set(w.x, 2.6, w.z);
-						cone.target.position.set(w.x + facing.x * 10, 0, w.z + facing.z * 10);
+						cone.position.set(w.x, 2.2, w.z);
+						cone.target.position.set(w.x + facing.x * 4, 0, w.z + facing.z * 4);
 					}
 				}
 
