@@ -24,6 +24,12 @@ const room = new URLSearchParams(location.search).get("room") ?? "lobby";
 const scheme = location.protocol === "https:" ? "wss:" : "ws:";
 const ws = new WebSocket(`${scheme}//${location.host}/ws?room=${room}`);
 
+// every send goes through here: typing before the socket opens (or after it
+// dies) must not throw — drop the message instead
+function send(msg: ClientMsg) {
+	if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
 ws.addEventListener("message", (e) => {
 	const msg = JSON.parse(e.data) as ServerMsg;
 
@@ -50,8 +56,7 @@ type Key = keyof Input;
 export const inputs: Input = { w: false, s: false, a: false, d: false, e: false };
 
 function sendInput() {
-	const msg: ClientMsg = { type: "input", payload: inputs };
-	ws.send(JSON.stringify(msg));
+	send({ type: "input", payload: inputs });
 }
 
 function isGameKey(key: string): key is Key {
@@ -83,8 +88,7 @@ function onBlur() {
 // message so it can't fall between ticks like a sampled held-bit could.
 function onMouseDown(e: MouseEvent) {
 	if (e.button !== 0) return;
-	const msg: ClientMsg = { type: "attack" };
-	ws.send(JSON.stringify(msg));
+	send({ type: "attack" });
 }
 
 window.addEventListener("keydown", onKeyDown);

@@ -319,11 +319,12 @@ export function startGame(canvas: HTMLCanvasElement) {
 				}
 			}
 
-			// camera: always locked above the player, no sway; the seeker just gets a
-			// wider lens on the same ride
+			// camera: locked above the player, no sway, NO edge clamp — it rides free
+			// (it sits far above wall height, so nothing clips; clamping made walls
+			// seem to push the camera mid-map). The seeker just gets a wider lens.
 			const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
 			const s = camScale * k;
-			camera.position.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
+			camera.position.set(selfX, 25 * s, selfZ + 15 * s);
 			camera.lookAt(selfX, 0.5, selfZ);
 		}
 
