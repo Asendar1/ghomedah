@@ -10,6 +10,8 @@ export const PLAYER_R = 26;
 // Must exceed PLAYER_R to be reachable; the usable band = SEARCH_RANGE - PLAYER_R. Tune by feel.
 export const SEARCH_RANGE = 40;
 
+export const SEARCH_TIME = 2000; // 2 seconds
+
 // The office. Single source of truth for shape: the server collides with these
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
 export const MAP = {
@@ -40,3 +42,12 @@ export const MAP = {
 		{ x: 640, y: 680, w: 56, h: 44, id: 8, search: false },
 	] satisfies Cabinet[],
 };
+
+// Collision solids: every rect inflated by the player radius (Minkowski).
+// Lives here so helper.ts can import it without a server⇄helper cycle.
+export const solids = [...MAP.walls, ...MAP.cabinets].map((r) => ({
+	x: r.x - PLAYER_R,
+	y: r.y - PLAYER_R,
+	w: r.w + 2 * PLAYER_R,
+	h: r.h + 2 * PLAYER_R,
+}));

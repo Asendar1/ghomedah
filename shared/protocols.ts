@@ -3,6 +3,7 @@ export interface Input {
 	s: boolean;
 	a: boolean;
 	d: boolean;
+	e: boolean; // hold-E: wants to search. The server checks you're actually near a cabinet.
 }
 
 export interface WirePlayer {
@@ -24,9 +25,10 @@ export interface Cabinet extends Rect {
 	search: boolean;
 }
 
-export type ClientMsg = { type: "input"; payload: Input } | { type: "search" };
+export type ClientMsg = { type: "input"; payload: Input };
 
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }
 	| { type: "snapshot"; tick: number; players: WirePlayer[] }
-	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number };
+	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number; searchTime: number }
+	| { type: "boxSearched"; id: number };

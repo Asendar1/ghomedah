@@ -1,8 +1,8 @@
-import { solids } from "./server.ts";
-import { inflate, contains } from "@ghomedah/shared/geometry";
+import { solids } from "./config.ts";
+import { contains } from "@ghomedah/shared/geometry";
 
 //i don't want to export and import tsc shutup
-export function getRandomPos(id :string, players: any ): [number, number] {
+export function getRandomPos(id: string, players: Map<string, { x: number; y: number }>): [number, number] {
 	let sx = 0;
 	let sy = 0;
 

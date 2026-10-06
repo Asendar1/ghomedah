@@ -24,13 +24,17 @@ ws.addEventListener("message", (e) => {
 		if (samples.length > 3) samples.shift();
 	} else if (msg.type === "map") {
 		mapData = msg;
+	} else if (msg.type === "boxSearched") {
+		const box = mapData?.cabinets.find((c) => c.id === msg.id);
+		if (box) box.search = true;
 	}
 });
 
 // -- input --
 type Key = keyof Input;
 
-const inputs: Input = { w: false, s: false, a: false, d: false };
+// e is a held "I want to search" bit — the server checks you're near a cabinet
+export const inputs: Input = { w: false, s: false, a: false, d: false, e: false };
 
 function sendInput() {
 	const msg: ClientMsg = { type: "input", payload: inputs };

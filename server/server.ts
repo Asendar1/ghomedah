@@ -1,25 +1,20 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { collidesWithAnyPlayer, getRandomPos} from "./helper.ts";
-import { MAP, SEARCH_RANGE, SPEED, PLAYER_R } from "./config.ts";
+import { collidesWithAnyPlayer, getRandomPos } from "./helper.ts";
+import { MAP, SEARCH_RANGE, SPEED, SEARCH_TIME, solids } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg, Cabinet } from "@ghomedah/shared";
-import { contains } from "@ghomedah/shared/geometry";
+import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
 const wss = new WebSocketServer({ port: 8787, host: "0.0.0.0" });
 let tick = 0;
-
-export const solids = [...MAP.walls, ...MAP.cabinets].map((r) => ({
-	x: r.x - PLAYER_R,
-	y: r.y - PLAYER_R,
-	w: r.w + 2 * PLAYER_R,
-	h: r.h + 2 * PLAYER_R,
-}));
+let lastTickAt = Date.now();
 
 interface Players {
 	id: string;
 	x: number;
 	y: number;
 	inputs: Input;
+	searchT: number;
 }
 
 interface CustomWebScoket extends WebSocket {
@@ -35,7 +30,8 @@ wss.on("connection", (ws: CustomWebScoket) => {
 		id: ws.id,
 		x: sx,
 		y: sy,
-		inputs: { w: false, s: false, a: false, d: false },
+		inputs: { w: false, s: false, a: false, d: false, e: false },
+		searchT: 0,
 	};
 	players.set(ws.id, newPlayer);
 	const welcome: ServerMsg = { type: "welcome", payload: { id: ws.id } };
@@ -45,19 +41,26 @@ wss.on("connection", (ws: CustomWebScoket) => {
 		walls: MAP.walls,
 		cabinets: MAP.cabinets,
 		searchRange: SEARCH_RANGE,
+		searchTime: SEARCH_TIME,
 	};
 	ws.send(JSON.stringify(map));
 
 	ws.on("message", (rawMsg: string) => {
 		try {
 			const msg = JSON.parse(rawMsg) as ClientMsg;
+			const player = players.get(ws.id);
+
+			if (player === undefined) return;
 
 			if (msg.type === "input") {
-				const player = players.get(ws.id);
-				if (player) {
-					const p = msg.payload;
-					player.inputs = { w: !!p?.w, s: !!p?.s, a: !!p?.a, d: !!p?.d };
-				}
+				const p = msg.payload;
+				player.inputs = {
+					w: !!p?.w,
+					s: !!p?.s,
+					a: !!p?.a,
+					d: !!p?.d,
+					e: !!p?.e,
+				};
 			}
 		} catch (err) {
 			console.error("failed to parse incoming player message: ", err);
@@ -71,6 +74,12 @@ wss.on("connection", (ws: CustomWebScoket) => {
 
 setInterval(() => {
 	tick++;
+	// real ms between ticks — setInterval(33.33) actually fires every ~46ms on
+	// Windows (15.625ms timer quantum), so tick-time ≠ wall-time. The search
+	// meter counts wall seconds; clamp caps sleep/resume skips.
+	const now = Date.now();
+	const tickDt = Math.min(now - lastTickAt, 250);
+	lastTickAt = now;
 
 	players.forEach((v, k) => {
 		const player: Players = players.get(k) as Players;
@@ -86,13 +95,42 @@ setInterval(() => {
 		const moveY = len > 0 ? (dy / len) * SPEED : 0;
 
 		const nextX = Math.max(10, Math.min(790, player.x + moveX));
-		if (!solids.some((b) => contains(b, nextX, player.y)) && !collidesWithAnyPlayer({x: nextX, y: player.y}, player.id, players)) {
+		if (
+			!solids.some((b) => contains(b, nextX, player.y)) &&
+			!collidesWithAnyPlayer({ x: nextX, y: player.y }, player.id, players)
+		) {
 			player.x = nextX;
 		}
 
 		const nextY = Math.max(10, Math.min(790, player.y + moveY));
-		if (!solids.some((b) => contains(b, player.x, nextY)) && !collidesWithAnyPlayer({x: player.x, y: nextY}, player.id, players)) {
+		if (
+			!solids.some((b) => contains(b, player.x, nextY)) &&
+			!collidesWithAnyPlayer({ x: player.x, y: nextY }, player.id, players)
+		) {
 			player.y = nextY;
+		}
+
+		// search: the client only sends intent (E held); the tick owns the timer
+		// and the world mutation. release or step away → progress dies with it.
+		// wall-ms accumulate so SEARCH_TIME = real seconds (matches the client bar).
+		// typed: config's `satisfies` keeps `search` literal-typed, Cabinet makes it mutable
+		const nearCabinet: Cabinet | undefined = MAP.cabinets.find(
+			(c) => !c.search && contains(inflate(c, SEARCH_RANGE), player.x, player.y),
+		);
+		if (nearCabinet && player.inputs.e) {
+			player.searchT += tickDt;
+			if (player.searchT >= SEARCH_TIME) {
+				nearCabinet.search = true;
+				player.searchT = 0;
+
+				//broadcast
+				const boxMsg: ServerMsg = { type: "boxSearched", id: nearCabinet.id };
+				const boxJson = JSON.stringify(boxMsg);
+				for (const c of wss.clients)
+					if (c.readyState === WebSocket.OPEN) c.send(boxJson);
+			}
+		} else {
+			player.searchT = 0;
 		}
 	});
 
