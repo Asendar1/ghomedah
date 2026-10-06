@@ -1,7 +1,7 @@
 import type { Cabinet, Rect } from "@ghomedah/shared";
 
 // Balance knobs + the office layout. The one place to turn dials.
-export const SPEED = 5; // game px per tick
+export const SPEED = 7; // game px per tick (real ticks ~21/s on Windows ≈ 150 px/s)
 
 // Player hitbox radius in game px — matches the capsule's 1 world unit (≈26.7 px).
 export const PLAYER_R = 26;
@@ -18,9 +18,9 @@ export const HUNT_TIME = 90_000;
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;
 
-// Infection reach in px. MUST exceed 2*PLAYER_R (52): movement rejects any
-// position closer than that, so a smaller reach could never trigger a touch.
-export const INFECT_REACH = 70;
+// Infection reach in px — infection should mean TOUCHING. Movement blocks at
+// 52px (2*PLAYER_R), so the reach must exceed 52; 55 = pressed up against them.
+export const INFECT_REACH = 55;
 
 // Max players per room.
 export const MAX_PLAYERS = 8;

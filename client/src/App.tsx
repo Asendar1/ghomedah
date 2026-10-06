@@ -37,9 +37,9 @@ export default function App() {
   const you = me?.role === 'hunter' ? 'YOU ARE THE HUNTER' : me?.role === 'zombie' ? 'INFECTED — hunt the survivors' : ''
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-[#050505]">
-      <canvas className='border-8 border-amber-200' ref={ref} width={800} height={800} />
-      <div className="pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 select-none text-center font-mono text-white">
+    <div className="relative h-screen w-screen overflow-hidden bg-[#050505]">
+      <canvas className="block h-full w-full" ref={ref} />
+      <div className="pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 select-none rounded bg-black/50 px-4 py-1 text-center font-mono text-white">
         {label && <div className="text-xl tracking-widest">{label}</div>}
         {you && <div className="mt-1 text-sm tracking-wider text-amber-300">{you}</div>}
       </div>

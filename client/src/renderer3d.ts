@@ -18,17 +18,26 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const scene = new three.Scene();
 	scene.background = new three.Color("#040355");
 
-	const camera = new three.PerspectiveCamera(
-		75,
-		canvas.width / canvas.height,
-		0.1,
-		800,
-	);
-	camera.position.set(0, 20, 12);
-	camera.lookAt(0, 0, 0);
+	const camera = new three.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
 
 	const renderer = new three.WebGLRenderer({ canvas });
-	renderer.setSize(canvas.width, canvas.height);
+	// fill the window; refit on resize (the canvas element is styled 100%)
+	const setSize = () => {
+		const w = window.innerWidth;
+		const h = window.innerHeight;
+		renderer.setSize(w, h);
+		camera.aspect = w / h;
+		camera.updateProjectionMatrix();
+		// pull back just enough to keep the whole arena in frame when the window
+		// is portrait-ish (snapped / docked windows)
+		// ponytail: single aspect-keyed distance scale; swap for a real fit-to-bounds
+		// only if someone plays at extreme aspects
+		const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
+		camera.position.set(0, 25 * k, 15 * k);
+		camera.lookAt(0, 0, 0);
+	};
+	setSize();
+	window.addEventListener("resize", setSize);
 
 	const planeMat = new three.MeshBasicMaterial({ color: "#ffffff" });
 	const playerMat = new three.MeshBasicMaterial({ color: "#00ffff" });
@@ -44,7 +53,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	});
 
 	const playerGeo = new three.CapsuleGeometry(1, 1);
-	const planeGeo = new three.PlaneGeometry(WORLD, WORLD);
+	const planeGeo = new three.PlaneGeometry(120, 120); // bigger than the arena so widescreen shows floor, not void
 	const plane = new three.Mesh(planeGeo, planeMat);
 	plane.rotation.x = -Math.PI / 2;
 	scene.add(plane);
@@ -226,5 +235,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 	return () => {
 		renderer.setAnimationLoop(null);
 		renderer.dispose();
+		window.removeEventListener("resize", setSize);
 	};
 }
