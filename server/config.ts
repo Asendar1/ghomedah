@@ -8,7 +8,7 @@ export const PLAYER_R = 26;
 
 // Search reach: how far from a cabinet's edge (game px) a search can trigger.
 // Must exceed PLAYER_R to be reachable; the usable band = SEARCH_RANGE - PLAYER_R. Tune by feel.
-export const SEARCH_RANGE = 50;
+export const SEARCH_RANGE = 40;
 
 // The office. Single source of truth for shape: the server collides with these
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
