@@ -39,8 +39,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// vision — client-only knobs, zero netcode. Lights need lit materials, so
 	// everything is Lambert now (matte, still the flat blockout look).
 	const VISION = {
-		dark: { color: 0x2a2d45, intensity: 0.5 }, // prey/zombie ambient — dark office
-		full: { color: 0xdde3f2, intensity: 1.05 }, // the seeker sees everyone
+		dark: { color: 0x2a2d45, intensity: 0.5 }, // everyone, always — the seeker just sees more of it
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // camera height/offset scale for the non-seeker follow view
 	};
@@ -109,7 +108,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const faces = new Map<string, { lx: number; lz: number; fx: number; fz: number }>();
 	const playerCones = new Map<string, three.SpotLight>();
 	let camMode: "full" | "follow" = "follow";
-	const camDesired = new three.Vector3();
 	let selfX = 0; // my interpolated position — the camera's look-at target
 	let selfZ = 0;
 
@@ -253,26 +251,20 @@ export function startGame(canvas: HTMLCanvasElement) {
 				f.lx = w.x;
 				f.lz = w.z;
 
-				// everyone except the seeker carries a real flashlight — others SEE
-				// its pool sweep the floor
+				// EVERY player carries a real flashlight — including the seeker. A
+				// beam is a giveaway: it sweeps the dark where everyone can see it
 				let beam = playerCones.get(p.id);
-				if (p.role !== "hunter") {
-					if (!beam) {
-						beam = p.id === id ? cone : mkFlashlight(512, 22);
-						playerCones.set(p.id, beam);
-					}
-					beam.visible = true;
-					beam.position.set(w.x, 2.2, w.z);
-					beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
-				} else if (beam) {
-					beam.visible = false; // the seeker has no beam — his edge is the wide view
+				if (!beam) {
+					beam = p.id === id ? cone : mkFlashlight(512, 22);
+					playerCones.set(p.id, beam);
 				}
+				beam.visible = true;
+				beam.position.set(w.x, 2.2, w.z);
+				beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
 
 				if (p.id === id) {
-					const full = p.role === "hunter"; // the seeker is the ONLY full-map view
-					camMode = full ? "full" : "follow";
-					ambient.color.setHex(full ? VISION.full.color : VISION.dark.color);
-					ambient.intensity = full ? VISION.full.intensity : VISION.dark.intensity;
+					// the seeker's ONLY edge is the wider camera — same darkness as everyone
+					camMode = p.role === "hunter" ? "full" : "follow";
 					selfX = w.x;
 					selfZ = w.z;
 				}
@@ -326,18 +318,17 @@ export function startGame(canvas: HTMLCanvasElement) {
 				}
 			}
 
-			// camera: the seeker sits wide and sees everyone; everyone else rides a
-			// tight follow cam revealing only their surroundings
+			// camera: the seeker sits wide; everyone else is rigidly locked above
+			// their player — no lerp, no sway (snapshot interpolation is the smoothing)
 			const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
 			if (camMode === "follow") {
 				const s = VISION.followScale * k;
-				camDesired.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
+				camera.position.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
 				camera.lookAt(selfX, 0.5, selfZ);
 			} else {
-				camDesired.set(0, 25 * k, 15 * k);
+				camera.position.set(0, 25 * k, 15 * k);
 				camera.lookAt(0, 0, 0);
 			}
-			camera.position.lerp(camDesired, Math.min(1, dt * 0.007));
 		}
 
 		renderer.render(scene, camera);
