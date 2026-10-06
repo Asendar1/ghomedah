@@ -205,13 +205,15 @@ setInterval(() => {
 			}
 		});
 
-		// infection — n <= MAX_PLAYERS, O(n²) is fine; revisit only if the cap grows
+		// infection — the infected HOLDS E (same interact key as search) while
+		// touching a prey to convert them; no more auto-convert on approach.
+		// n <= MAX_PLAYERS, O(n²) is fine; revisit only if the cap grows
 		if (room.phase === "HUNT") {
 			for (const h of room.players.values()) {
 				if (h.role === "prey") continue;
 				for (const v of room.players.values()) {
 					if (v.role !== "prey") continue;
-					if ((h.x - v.x) ** 2 + (h.y - v.y) ** 2 < INFECT_REACH * INFECT_REACH) {
+					if (h.inputs.e && (h.x - v.x) ** 2 + (h.y - v.y) ** 2 < INFECT_REACH * INFECT_REACH) {
 						v.role = "zombie";
 					}
 				}

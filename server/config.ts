@@ -18,8 +18,9 @@ export const HUNT_TIME = 90_000;
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;
 
-// Infection reach in px — infection should mean TOUCHING. Movement blocks at
-// 52px (2*PLAYER_R), so the reach must exceed 52; 55 = pressed up against them.
+// Infection reach in px — the infected holds E while this close to a prey to
+// convert them (same interact key as search). Must exceed the 52px movement
+// standoff; 55 = pressed up against them. Tune by feel.
 export const INFECT_REACH = 55;
 
 // Max players per room.

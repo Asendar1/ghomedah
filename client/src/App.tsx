@@ -34,7 +34,12 @@ export default function App() {
         : phase.winner === 'prey'
           ? 'PREYS WIN'
           : 'HUNTERS WIN'
-  const you = me?.role === 'hunter' ? 'YOU ARE THE HUNTER' : me?.role === 'zombie' ? 'INFECTED — hunt the survivors' : ''
+  const you =
+    me?.role === 'hunter'
+      ? 'YOU ARE THE HUNTER — hold E to infect'
+      : me?.role === 'zombie'
+        ? 'INFECTED — hold E to infect the rest'
+        : ''
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#050505]">
