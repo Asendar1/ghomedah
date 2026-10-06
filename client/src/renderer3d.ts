@@ -1,6 +1,6 @@
 import * as three from "three";
 import type { Cabinet, Rect } from "@ghomedah/shared";
-import { samples, id, mapData, inputs } from "./net";
+import { samples, id, mapData, inputs, phase } from "./net";
 import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const INTERP_MS = 66;
@@ -33,6 +33,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const planeMat = new three.MeshBasicMaterial({ color: "#ffffff" });
 	const playerMat = new three.MeshBasicMaterial({ color: "#00ffff" });
 	const enemyMat = new three.MeshBasicMaterial({ color: "#fafa00" });
+	const hunterMat = new three.MeshBasicMaterial({ color: "#ff2e2e" });
+	const zombieMat = new three.MeshBasicMaterial({ color: "#3dff6e" });
 	const wallMat = new three.MeshBasicMaterial({ color: "#1c1c1c" }); // palette: yours
 	const cabinetMat = new three.MeshBasicMaterial({ color: "#4a4a4a" });
 	const lidMat = new three.MeshBasicMaterial({ color: "#5c5c5c" });
@@ -169,9 +171,11 @@ export function startGame(canvas: HTMLCanvasElement) {
 				const gy = q ? q.y + (p.y - q.y) * t : p.y;
 				const w = toWorld(gx, gy);
 				mesh.position.set(w.x, 1.5, w.z);
+				mesh.material =
+					p.role === "hunter" ? hunterMat : p.role === "zombie" ? zombieMat : p.id === id ? playerMat : enemyMat;
 
-				//box outline + search meter
-				if (p.id === id && searchBoxes.length) {
+				//box outline + search meter — only while searching is possible
+				if (p.id === id && searchBoxes.length && (!phase || phase.phase === "SEARCH")) {
 					const closeCabinet = mapData?.cabinets.find(
 						(c, i) => !c.search && contains(searchBoxes[i], gx, gy),
 					);
@@ -198,6 +202,10 @@ export function startGame(canvas: HTMLCanvasElement) {
 						meterFill.scale.x = searchT / searchMs;
 						meter.lookAt(camera.position);
 					}
+				} else if (p.id === id) {
+					// not searchable right now (HUNT/END) — no stuck outline or meter
+					scene.remove(outline);
+					meter.visible = false;
 				}
 			}
 

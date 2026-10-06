@@ -12,6 +12,19 @@ export const SEARCH_RANGE = 40;
 
 export const SEARCH_TIME = 2000; // 2 seconds
 
+// Hunt phase length (wall ms). The map is small — 90s is plenty.
+export const HUNT_TIME = 90_000;
+
+// How long the result stays on screen before the room resets itself.
+export const END_TIME = 10_000;
+
+// Infection reach in px. MUST exceed 2*PLAYER_R (52): movement rejects any
+// position closer than that, so a smaller reach could never trigger a touch.
+export const INFECT_REACH = 70;
+
+// Max players per room.
+export const MAX_PLAYERS = 8;
+
 // The office. Single source of truth for shape: the server collides with these
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
 export const MAP = {

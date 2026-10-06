@@ -11,6 +11,14 @@ type MapMsg = Extract<ServerMsg, { type: "map" }>;
 export const samples: Snapshot[] = [];
 export let id: string | null = null;
 export let mapData: MapMsg | null = null;
+export let phase: Extract<ServerMsg, { type: "phase" }> | null = null;
+
+// phase changes are rare (a few per round) — let the shell react immediately
+type PhaseMsg = Extract<ServerMsg, { type: "phase" }>;
+const phaseListeners: ((m: PhaseMsg) => void)[] = [];
+export function onPhase(fn: (m: PhaseMsg) => void) {
+	phaseListeners.push(fn);
+}
 
 const room = new URLSearchParams(location.search).get("room") ?? "lobby";
 const scheme = location.protocol === "https:" ? "wss:" : "ws:";
@@ -29,6 +37,9 @@ ws.addEventListener("message", (e) => {
 	} else if (msg.type === "boxSearched") {
 		const box = mapData?.cabinets.find((c) => c.id === msg.id);
 		if (box) box.search = true;
+	} else if (msg.type === "phase") {
+		phase = msg;
+		for (const fn of phaseListeners) fn(msg);
 	}
 });
 

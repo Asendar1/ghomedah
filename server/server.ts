@@ -1,7 +1,17 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { collidesWithAnyPlayer, getRandomPos } from "./helper.ts";
-import { MAP, SEARCH_RANGE, SPEED, SEARCH_TIME, solids } from "./config.ts";
-import type { ClientMsg, Input, ServerMsg, Cabinet } from "@ghomedah/shared";
+import {
+	MAP,
+	SEARCH_RANGE,
+	SPEED,
+	SEARCH_TIME,
+	solids,
+	HUNT_TIME,
+	END_TIME,
+	INFECT_REACH,
+	MAX_PLAYERS,
+} from "./config.ts";
+import type { ClientMsg, Input, ServerMsg, Cabinet, Phase, Role } from "@ghomedah/shared";
 import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const TICK_MS = 1000 / 30; // 30 ticks per second
@@ -15,6 +25,7 @@ interface Players {
 	y: number;
 	inputs: Input;
 	searchT: number;
+	role: Role;
 }
 
 interface CustomWebScoket extends WebSocket {
@@ -25,6 +36,10 @@ interface Room {
 	players: Map<string, Players>;
 	sockets: Set<WebSocket>;
 	cabinets: Cabinet[]; // per-room search flags — MAP.cabinets is only the template
+	phase: Phase;
+	endsAt: number; // wall-ms deadline for the current phase (0 = none)
+	winner: "prey" | "hunters" | null;
+	poisonId: number;
 }
 
 const rooms = new Map<string, Room>();
@@ -32,6 +47,26 @@ const rooms = new Map<string, Room>();
 function send(room: Room, msg: ServerMsg) {
 	const json = JSON.stringify(msg);
 	for (const s of room.sockets) if (s.readyState === WebSocket.OPEN) s.send(json);
+}
+
+function endRound(room: Room, winner: "prey" | "hunters", now: number) {
+	room.phase = "END";
+	room.endsAt = now + END_TIME;
+	room.winner = winner;
+	send(room, { type: "phase", phase: "END", endsAt: room.endsAt, winner });
+}
+
+function resetRound(room: Room) {
+	for (const c of room.cabinets) c.search = false;
+	for (const p of room.players.values()) {
+		p.role = "prey";
+		p.searchT = 0;
+	}
+	room.phase = "SEARCH";
+	room.endsAt = 0;
+	room.winner = null;
+	room.poisonId = 1 + Math.floor(Math.random() * MAP.cabinets.length);
+	send(room, { type: "phase", phase: "SEARCH", endsAt: 0, winner: null });
 }
 
 wss.on("connection", (ws: CustomWebScoket, req) => {
@@ -42,9 +77,14 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 			players: new Map(),
 			sockets: new Set(),
 			cabinets: MAP.cabinets.map((c) => ({ ...c })),
+			phase: "SEARCH",
+			endsAt: 0,
+			winner: null,
+			poisonId: 1 + Math.floor(Math.random() * MAP.cabinets.length),
 		};
 		rooms.set(code, room);
 	}
+	if (room.players.size >= MAX_PLAYERS) return ws.close();
 	ws.id = crypto.randomUUID();
 	const [sx, sy] = getRandomPos(ws.id, room.players);
 	const newPlayer: Players = {
@@ -53,6 +93,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		y: sy,
 		inputs: { w: false, s: false, a: false, d: false, e: false },
 		searchT: 0,
+		role: "prey",
 	};
 	room.players.set(ws.id, newPlayer);
 	room.sockets.add(ws);
@@ -66,6 +107,8 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		searchTime: SEARCH_TIME,
 	};
 	ws.send(JSON.stringify(map));
+	const ph: ServerMsg = { type: "phase", phase: room.phase, endsAt: room.endsAt, winner: room.winner };
+	ws.send(JSON.stringify(ph));
 
 	ws.on("message", (rawMsg: string) => {
 		try {
@@ -135,14 +178,14 @@ setInterval(() => {
 				player.y = nextY;
 			}
 
-			// search: the client only sends intent (E held); the tick owns the timer
-			// and the world mutation. release or step away → progress dies with it.
-			// wall-ms accumulate so SEARCH_TIME = real seconds (matches the client bar).
+			// search: only during SEARCH — by HUNT the poison is already found.
+			// The client only sends intent (E held); the tick owns the timer and
+			// the world mutation. wall-ms accumulate so SEARCH_TIME = real seconds.
 			// typed: config's `satisfies` keeps `search` literal-typed, Cabinet makes it mutable
 			const nearCabinet: Cabinet | undefined = room.cabinets.find(
 				(c) => !c.search && contains(inflate(c, SEARCH_RANGE), player.x, player.y),
 			);
-			if (nearCabinet && player.inputs.e) {
+			if (room.phase === "SEARCH" && nearCabinet && player.inputs.e) {
 				player.searchT += tickDt;
 				if (player.searchT >= SEARCH_TIME) {
 					nearCabinet.search = true;
@@ -150,16 +193,41 @@ setInterval(() => {
 
 					//broadcast
 					send(room, { type: "boxSearched", id: nearCabinet.id });
+					if (nearCabinet.id === room.poisonId) {
+						player.role = "hunter";
+						room.phase = "HUNT";
+						room.endsAt = now + HUNT_TIME;
+						send(room, { type: "phase", phase: "HUNT", endsAt: room.endsAt, winner: null });
+					}
 				}
 			} else {
 				player.searchT = 0;
 			}
 		});
 
+		// infection — n <= MAX_PLAYERS, O(n²) is fine; revisit only if the cap grows
+		if (room.phase === "HUNT") {
+			for (const h of room.players.values()) {
+				if (h.role === "prey") continue;
+				for (const v of room.players.values()) {
+					if (v.role !== "prey") continue;
+					if ((h.x - v.x) ** 2 + (h.y - v.y) ** 2 < INFECT_REACH * INFECT_REACH) {
+						v.role = "zombie";
+					}
+				}
+			}
+
+			const preyLeft = [...room.players.values()].filter((p) => p.role === "prey").length;
+			if (preyLeft === 0) endRound(room, "hunters", now);
+			else if (now >= room.endsAt) endRound(room, "prey", now);
+		} else if (room.phase === "END" && now >= room.endsAt) {
+			resetRound(room);
+		}
+
 		const snap: ServerMsg = {
 			type: "snapshot",
 			tick,
-			players: Array.from(room.players.values(), ({ id, x, y }) => ({ id, x, y })),
+			players: Array.from(room.players.values(), ({ id, x, y, role }) => ({ id, x, y, role })),
 		};
 		send(room, snap);
 	});
