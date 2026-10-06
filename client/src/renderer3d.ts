@@ -39,12 +39,15 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// vision — client-only knobs, zero netcode. Lights need lit materials, so
 	// everything is Lambert now (matte, still the flat blockout look).
 	const VISION = {
-		dark: { color: 0x2a2d45, intensity: 0.5 }, // everyone, always — the seeker just sees more of it
+		// the room's own light, by phase (tune by feel): dim enough to search in,
+		// then near-pitch-black from the moment the poison is found — after that
+		// the flashlights are the only light there is
+		ambient: { color: 0x2a2d45, search: 0.9, hunt: 0.07 },
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // hider camera height/offset scale
 		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
 	};
-	const ambient = new three.AmbientLight(VISION.dark.color, VISION.dark.intensity);
+	const ambient = new three.AmbientLight(VISION.ambient.color, VISION.ambient.search);
 	scene.add(ambient);
 	// one flashlight factory: mine + one per other player (their beams are real lights)
 	const mkFlashlight = (mapSize: number, dist: number) => {
@@ -199,6 +202,11 @@ export function startGame(canvas: HTMLCanvasElement) {
 			const target = cabinets[i].search ? -1.45 : 0;
 			lids[i].rotation.x += (target - lids[i].rotation.x) * k;
 		}
+
+		// the lights die when the poison is found — and come back at the reset.
+		// Sampled live each frame; the lerp reads as the lights going out.
+		const ambTarget = phase && phase.phase !== "SEARCH" ? VISION.ambient.hunt : VISION.ambient.search;
+		ambient.intensity += (ambTarget - ambient.intensity) * k;
 
 		if (samples.length) {
 			const render_at = performance.now() - INTERP_MS;
