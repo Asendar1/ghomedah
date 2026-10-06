@@ -42,7 +42,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 		dark: { color: 0x2a2d45, intensity: 0.5 }, // everyone, always — the seeker just sees more of it
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // hider camera height/offset scale
-		seekerScale: 0.6, // the seeker's only edge: a wider lens, not the whole map
+		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
 	};
 	const ambient = new three.AmbientLight(VISION.dark.color, VISION.dark.intensity);
 	scene.add(ambient);
