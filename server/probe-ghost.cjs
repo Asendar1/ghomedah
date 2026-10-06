@@ -1,8 +1,9 @@
-// E2E check: the late-hunt ghost echo. After GHOST_DELAY of hunt (sed'd to 6s
-// here), each PREY gets a glowing copy that blinks — GHOST_VISIBLE (1s) on, the
-// rest of GHOST_CYCLE (3s) off — at the spot where they stood when the cycle
-// started. Hunters never get one; nothing blinks before the delay; moving
-// re-captures the echo at the new spot on the next cycle.
+// E2E check: the late-hunt ghost flashes. The hunt is sed'd to 12s with flashes
+// at 6s and 2s remaining (= one with 30s left, one with 10s left in real time).
+// At each flash window every PREY gets a glowing copy for GHOST_VISIBLE (1s) at
+// the spot where they stood when the window opened — exactly once per window,
+// nothing in between, hunters never get one, and a mid-hunt move re-pins the
+// second flash to the new spot.
 // A (prey) hides while B searches the planted poison (cabinet 1) -> hunter.
 // Usage: node server/probe-ghost.cjs   (self-stages server/_probe, cleans up)
 const fs = require("fs");
@@ -25,11 +26,12 @@ const src = fs
 	)
 	.replaceAll("1 + Math.floor(Math.random() * MAP.cabinets.length)", "1"); // poison = cabinet 1
 fs.writeFileSync(path.join(dir, "server.ts"), src);
-// ghosts fire after 6s instead of 60s, so the probe doesn't wait a minute
+// tiny hunt: 12s long, flashes at 6s and 2s remaining (elapsed 6s and 10s)
 const cfgsrc = fs
 	.readFileSync(path.join(__dirname, "config.ts"), "utf8")
-	.replace("export const GHOST_DELAY = 60_000;", "export const GHOST_DELAY = 6_000;");
-if (!cfgsrc.includes("6_000")) throw new Error("GHOST_DELAY sed failed");
+	.replace("export const HUNT_TIME = 90_000;", "export const HUNT_TIME = 12_000;")
+	.replace("export const GHOST_FLASHES = [30_000, 10_000];", "export const GHOST_FLASHES = [6_000, 2_000];");
+if (!cfgsrc.includes("12_000") || !cfgsrc.includes("[6_000, 2_000]")) throw new Error("probe sed failed");
 fs.writeFileSync(path.join(dir, "config.ts"), cfgsrc);
 fs.copyFileSync(path.join(__dirname, "helper.ts"), path.join(dir, "helper.ts"));
 
@@ -106,43 +108,51 @@ function walkTo(A, tx, ty, label) {
 		await waitFor(() => B.st.phase === "HUNT", 5000, "poison found -> HUNT");
 		clearInterval(eHold);
 		const huntT0 = Date.now();
+		const sampleFor = async (ms) => {
+			const out = [];
+			const t = Date.now();
+			while (Date.now() - t < ms) {
+				const a = other(B, A.st.id);
+				if (a) out.push({ on: a.ghost !== null, gx: a.ghost?.x, gy: a.ghost?.y, ax: a.x, ay: a.y, self: me(B)?.ghost });
+				await sleep(100);
+			}
+			return out;
+		};
+		const runsOf = (s) => s.filter((x, i) => x.on && (i === 0 || !s[i - 1].on)).length;
+		const pinned = (s, px, py) => s.filter((x) => x.on).every((x) => Math.abs(x.gx - px) <= 2 && Math.abs(x.gy - py) <= 2);
 
-		// 1. before the delay: nobody blinks (check from B's view of both players)
-		await sleep(700);
-		const pre = B.st.players;
-		check(pre.every((p) => p.ghost === null), "no ghost before the delay");
+		// 1. nothing before the first flash
+		await waitFor(() => Date.now() - huntT0 >= 3400, 5000, "waiting out the early hunt");
+		check(B.st.players.every((p) => p.ghost === null), "no flash in the early hunt");
 
-		// 2. after the delay: sample the blink for ~6s from B's view of A
-		await waitFor(() => Date.now() - huntT0 >= 6900, 9000, "delay elapsed");
-		const samples = [];
-		const t0 = Date.now();
-		while (Date.now() - t0 < 6000) {
-			const a = other(B, A.st.id);
-			if (a) samples.push({ on: a.ghost !== null, gx: a.ghost?.x, gy: a.ghost?.y, ax: a.x, ay: a.y, self: me(B)?.ghost });
-			await sleep(100);
-		}
-		const onN = samples.filter((s) => s.on).length;
-		const runs = samples.filter((s, i) => s.on && (i === 0 || !samples[i - 1].on)).length;
-		check(onN > 0 && runs >= 2, `blink cycle seen: ${runs} on-runs, ${onN}/${samples.length} on-samples`);
-		const ratio = onN / samples.length;
-		check(ratio > 0.15 && ratio < 0.55, `duty cycle ≈ 1/3 (got ${ratio.toFixed(2)})`);
-		check(
-			samples.filter((s) => s.on).every((s) => Math.abs(s.gx - s.ax) <= 2 && Math.abs(s.gy - s.ay) <= 2),
-			"while standing still the echo is pinned exactly to the prey",
-		);
-		check(samples.every((s) => s.self === null), "the hunter never gets a ghost");
-		check(samples.every((s) => s.on || s.gx === undefined), "off-samples carry no position (null ghost)");
+		// 2. flash 1 (elapsed 6-7s): exactly one ~1s appearance, pinned at A's spot
+		await waitFor(() => Date.now() - huntT0 >= 5500, 6000, "first flash window opening");
+		const s1 = await sampleFor(1900);
+		check(runsOf(s1) === 1, `flash 1 appears exactly once (${runsOf(s1)} run(s))`);
+		const on1 = s1.filter((x) => x.on);
+		check(on1.length >= 8 && on1.length <= 14, `flash 1 lasts ~1s (${on1.length} on-samples)`);
+		check(pinned(s1, 400, 250), "flash 1 is pinned to where A stood");
+		check(s1.every((x) => x.self === null), "the hunter never gets a ghost");
+		check(s1.slice(-4).every((x) => !x.on), "flash 1 is gone a second later");
 
-		// 3. moving re-captures the echo at the new spot on a later cycle
+		// 3. A moves between flashes; nothing flashes in between
 		await walkTo(A, 400, 320, "A moved to a new spot");
-		let seen = null;
-		const t1 = Date.now();
-		while (Date.now() - t1 < 4600 && !seen) {
-			const a = other(B, A.st.id);
-			if (a && a.ghost && Math.hypot(a.ghost.x - 400, a.ghost.y - 320) <= 12) seen = a.ghost;
-			await sleep(100);
-		}
-		check(!!seen, "echo re-captured at the new spot after the move");
+		const s2 = await sampleFor(800);
+		check(s2.every((x) => !x.on), "no repeat between the two flashes");
+
+		// 4. flash 2 (~elapsed 10-11s): once, pinned at the NEW spot
+		await waitFor(() => Date.now() - huntT0 >= 9700, 10500, "second flash window opening");
+		const s3 = await sampleFor(1900);
+		check(runsOf(s3) === 1, `flash 2 appears exactly once (${runsOf(s3)} run(s))`);
+		const on3 = s3.filter((x) => x.on);
+		check(on3.length >= 8 && on3.length <= 14, `flash 2 lasts ~1s (${on3.length} on-samples)`);
+		check(
+			on3.every((x) => Math.abs(x.gx - x.ax) <= 2 && Math.abs(x.gy - x.ay) <= 2),
+			"flash 2 pinned exactly to where A now stands",
+		);
+		const aPos = other(B, A.st.id);
+		check(Math.hypot(aPos.x - 400, aPos.y - 250) > 40, "A really is at the new spot (moved >40px)");
+		check(s3.every((x) => x.self === null), "still no ghost for the hunter");
 
 		console.log("GHOST OK");
 		process.exitCode = 0;

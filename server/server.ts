@@ -12,9 +12,8 @@ import {
 	solids,
 	HUNT_TIME,
 	END_TIME,
-	GHOST_DELAY,
+	GHOST_FLASHES,
 	GHOST_VISIBLE,
-	GHOST_CYCLE,
 	INFECT_REACH,
 	INFECT_COOLDOWN,
 	MAX_PLAYERS,
@@ -276,17 +275,23 @@ setInterval(() => {
 				player.searchT = 0;
 			}
 
-			// ghost echo: GHOST_DELAY into the hunt a glowing copy of each hiding
-			// prey blinks at the spot where they stood when the cycle started —
-			// GHOST_VISIBLE on, the rest of GHOST_CYCLE off. Move, or stay pinned.
-			if (room.phase === "HUNT" && HUNT_TIME - (room.endsAt - now) >= GHOST_DELAY && player.role === "prey") {
-				if (now - player.ghostAt >= GHOST_CYCLE) {
+			// ghost flashes: at each GHOST_FLASHES remaining-time threshold a
+			// glowing copy of every hiding prey appears for GHOST_VISIBLE ms —
+			// captured where they stood when the window opened (once, not a loop)
+			const remaining = room.endsAt - now;
+			if (
+				room.phase === "HUNT" &&
+				player.role === "prey" &&
+				GHOST_FLASHES.some((f) => remaining <= f && remaining > f - GHOST_VISIBLE)
+			) {
+				if (!player.ghostAt) {
 					player.ghostAt = now;
 					player.ghostX = player.x;
 					player.ghostY = player.y;
 				}
-				player.ghost = now - player.ghostAt < GHOST_VISIBLE ? { x: player.ghostX, y: player.ghostY } : null;
+				player.ghost = { x: player.ghostX, y: player.ghostY };
 			} else {
+				player.ghostAt = 0;
 				player.ghost = null;
 			}
 		});

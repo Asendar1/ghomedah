@@ -15,13 +15,11 @@ export const SEARCH_TIME = 2000; // 2 seconds
 // Hunt phase length (wall ms). The map is small — 90s is plenty.
 export const HUNT_TIME = 90_000;
 
-// Ghost echo: GHOST_DELAY into the hunt, a glowing copy of each hiding prey
-// starts blinking at the spot where they stood when the cycle started.
-// Visible GHOST_VISIBLE ms, hidden the rest of GHOST_CYCLE. Standing still
-// pinpoints you; moving leaves the echo behind — the hiders must move.
-export const GHOST_DELAY = 60_000;
+// Ghost flashes: at each of these wall-ms REMAINING in the hunt, a glowing
+// copy of every hiding prey appears for GHOST_VISIBLE ms at the spot where
+// they stood — once with 30s left, once with 10s left. A late ping, not a loop.
+export const GHOST_FLASHES = [30_000, 10_000];
 export const GHOST_VISIBLE = 1_000;
-export const GHOST_CYCLE = 3_000;
 
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;

@@ -9,7 +9,7 @@ Browser multiplayer office hunt: everyone searches cabinets, one finds the poiso
 - **Move:** WASD on a close follow-cam that shows only the room around you.
 - **Search:** hold **E** next to a cabinet. The bar over your head fills. One cabinet holds the poison — the finder becomes the **hunter**.
 - **Survive:** searching happens in a dimly lit office — then the poison is found and the lights die: near-black, with only flashlight cones to see by. **F** toggles your beam (off hides it from everyone, but leaves you nearly blind). Use walls, break line of sight, don't get cornered.
-- **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you. Stay in one spot too long and a glowing ghost of you starts blinking there — a beacon for the hunter.
+- **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you. With 30 seconds left — and again with 10 — the hunt flashes a glowing ghost of every hider where they stand: a beacon for the hunter.
 - Preys win if at least one survives the 90 seconds; hunters win by converting everyone. Rounds reset themselves.
 
 ## Run it locally
@@ -56,7 +56,7 @@ No test framework — five runnable probes instead:
 - `node server/probe-ws.cjs` — a fresh client must receive welcome + map + phase (deploy smoke test; pass a `ws://…` URL for any host).
 - `node server/probe-infect.cjs` — the full infection rule, end to end: no click = no convert, one click converts exactly one prey, the cooldown drops early clicks and expires.
 - `node server/probe-flash.cjs` — the flashlight toggle relay: off/on reaches every other client and late joiners, and a payload that omits `lit` defaults back to on.
-- `node server/probe-ghost.cjs` — the late-hunt ghost echo: none before the delay, only prey get one, it blinks 1 s on / 2 s off at the spot where the prey stood when the cycle started, and it re-captures after they move.
+- `node server/probe-ghost.cjs` — the late-hunt ghost flashes: none before the first, exactly one 1 s flash with 30 s left and one with 10 s left at where the prey stood, hunters never get one.
 - `node server/bots.cjs --spawn` — the invariant + cadence load check from the table above.
 
 ## Next
