@@ -39,20 +39,34 @@ export function startGame(canvas: HTMLCanvasElement) {
 	setSize();
 	window.addEventListener("resize", setSize);
 
-	const planeMat = new three.MeshBasicMaterial({ color: "#ffffff" });
-	const playerMat = new three.MeshBasicMaterial({ color: "#00ffff" });
-	const enemyMat = new three.MeshBasicMaterial({ color: "#fafa00" });
-	const hunterMat = new three.MeshBasicMaterial({ color: "#ff2e2e" });
-	const zombieMat = new three.MeshBasicMaterial({ color: "#3dff6e" });
-	const wallMat = new three.MeshBasicMaterial({ color: "#1c1c1c" }); // palette: yours
-	const cabinetMat = new three.MeshBasicMaterial({ color: "#4a4a4a" });
-	const lidMat = new three.MeshBasicMaterial({ color: "#5c5c5c" });
+	// vision — client-only knobs, zero netcode. Lights need lit materials, so
+	// everything is Lambert now (matte, still the flat blockout look).
+	const VISION = {
+		dark: { color: 0x2a2d45, intensity: 0.5 }, // prey ambient — dark office
+		full: { color: 0xdde3f2, intensity: 1.05 }, // hunter/zombie — whole map
+		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
+	};
+	const ambient = new three.AmbientLight(VISION.dark.color, VISION.dark.intensity);
+	scene.add(ambient);
+	// prey flashlight — follows the self figure, points where you walk
+	const cone = new three.SpotLight(VISION.cone.color, VISION.cone.intensity, VISION.cone.dist, VISION.cone.angle, 0.45, 1.2);
+	cone.position.set(0, 2.6, 0);
+	cone.target.position.set(0, 0, 1);
+	scene.add(cone, cone.target);
+
+	const planeMat = new three.MeshLambertMaterial({ color: "#e8e8ea" });
+	const playerMat = new three.MeshLambertMaterial({ color: "#00ffff", emissive: 0x003a3a });
+	const enemyMat = new three.MeshLambertMaterial({ color: "#fafa00", emissive: 0x3a3a00 });
+	const hunterMat = new three.MeshLambertMaterial({ color: "#ff2e2e", emissive: 0x3a0000 });
+	const zombieMat = new three.MeshLambertMaterial({ color: "#3dff6e", emissive: 0x003a12 });
+	const wallMat = new three.MeshLambertMaterial({ color: "#2c2c34" });
+	const cabinetMat = new three.MeshLambertMaterial({ color: "#5a5a62" });
+	const lidMat = new three.MeshLambertMaterial({ color: "#6e6e76" });
 	const outlineMaterial = new three.MeshBasicMaterial({
 		color: 0x000000,
 		side: three.BackSide, // only renders interior/back faces
 	});
 
-	const playerGeo = new three.CapsuleGeometry(1, 1);
 	const planeGeo = new three.PlaneGeometry(120, 120); // bigger than the arena so widescreen shows floor, not void
 	const plane = new three.Mesh(planeGeo, planeMat);
 	plane.rotation.x = -Math.PI / 2;
@@ -80,8 +94,11 @@ export function startGame(canvas: HTMLCanvasElement) {
 	scene.add(meter);
 
 	// per-run state — lives and dies with this startGame call (StrictMode-safe)
-	const playerMap = new Map<string, three.Mesh>();
+	const playerMap = new Map<string, three.Group>();
 	let builtMap = false;
+	const facing = { x: 0, z: 1 }; // where my figure last moved — aims the cone
+	let selfX = 0;
+	let selfZ = 0;
 
 	// the office — one box per rect, built once when the map message arrives
 	function addBox(r: Rect, height: number, mat: three.Material) {
@@ -108,6 +125,31 @@ export function startGame(canvas: HTMLCanvasElement) {
 		hinge.add(lid);
 		scene.add(hinge);
 		return hinge;
+	}
+
+	// a blocky office figure: torso + shoulders + head. Role color goes on
+	// torso+head. No facing detail — remote players have no facing on the wire.
+	const torsoGeo = new three.BoxGeometry(0.95, 1.05, 0.62);
+	const headGeo = new three.BoxGeometry(0.6, 0.52, 0.52);
+	const collarGeo = new three.BoxGeometry(1.05, 0.16, 0.72);
+	const collarMat = new three.MeshLambertMaterial({ color: "#22232a" });
+
+	function makeCharacter(self: boolean) {
+		const g = new three.Group();
+		const body = new three.Mesh(torsoGeo, playerMat);
+		body.position.y = 0.55;
+		const collar = new three.Mesh(collarGeo, collarMat);
+		collar.position.y = 1.12;
+		const head = new three.Mesh(headGeo, playerMat);
+		head.position.y = 1.5;
+		g.add(body, collar, head);
+		if (self) {
+			const ol = new three.Mesh(torsoGeo, outlineMaterial);
+			ol.scale.setScalar(1.08);
+			body.add(ol);
+		}
+		g.userData.parts = [body, head];
+		return g;
 	}
 
 	let cabinets: Cabinet[] = [];
@@ -163,14 +205,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 			for (const p of b.players) {
 				let mesh = playerMap.get(p.id);
 				if (!mesh) {
-					// first time seeing this player: make their mesh (self = cyan + outline)
-					const isMe = p.id === id;
-					mesh = new three.Mesh(playerGeo, isMe ? playerMat : enemyMat);
-					if (isMe) {
-						const outline = new three.Mesh(playerGeo, outlineMaterial);
-						outline.scale.setScalar(1.05);
-						mesh.add(outline);
-					}
+					// first time seeing this player: build their figure (self gets the halo)
+					mesh = makeCharacter(p.id === id);
 					scene.add(mesh);
 					playerMap.set(p.id, mesh);
 				}
@@ -179,9 +215,32 @@ export function startGame(canvas: HTMLCanvasElement) {
 				const gx = q ? q.x + (p.x - q.x) * t : p.x;
 				const gy = q ? q.y + (p.y - q.y) * t : p.y;
 				const w = toWorld(gx, gy);
-				mesh.position.set(w.x, 1.5, w.z);
-				mesh.material =
+				mesh.position.set(w.x, 0, w.z);
+				const roleMat =
 					p.role === "hunter" ? hunterMat : p.role === "zombie" ? zombieMat : p.id === id ? playerMat : enemyMat;
+				for (const part of mesh.userData.parts as three.Mesh[]) part.material = roleMat;
+
+				// my view: prey = dark + flashlight cone (aimed where I last moved),
+				// hunter/zombie = full map. Rendering only — zero netcode.
+				if (p.id === id) {
+					const full = p.role !== "prey";
+					if (Math.hypot(w.x - selfX, w.z - selfZ) > 0.02) {
+						facing.x = w.x - selfX;
+						facing.z = w.z - selfZ;
+						const fl = Math.hypot(facing.x, facing.z);
+						facing.x /= fl;
+						facing.z /= fl;
+					}
+					selfX = w.x;
+					selfZ = w.z;
+					ambient.color.setHex(full ? VISION.full.color : VISION.dark.color);
+					ambient.intensity = full ? VISION.full.intensity : VISION.dark.intensity;
+					cone.visible = !full;
+					if (!full) {
+						cone.position.set(w.x, 2.6, w.z);
+						cone.target.position.set(w.x + facing.x * 10, 0, w.z + facing.z * 10);
+					}
+				}
 
 				//box outline + search meter — only while searching is possible
 				if (p.id === id && searchBoxes.length && (!phase || phase.phase === "SEARCH")) {
@@ -207,7 +266,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 					}
 					meter.visible = searchT > 0;
 					if (meter.visible) {
-						meter.position.set(w.x, 3.2, w.z);
+						meter.position.set(w.x, 2.9, w.z);
 						meterFill.scale.x = searchT / searchMs;
 						meter.lookAt(camera.position);
 					}
