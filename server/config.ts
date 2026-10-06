@@ -1,4 +1,4 @@
-import type { Cabinet, Rect } from "@ghomedah/shared";
+import type { Cabinet, Light, Rect } from "@ghomedah/shared";
 
 // Balance knobs + the office layout. The one place to turn dials.
 export const SPEED = 7; // game px per tick (real ticks ~21/s on Windows ≈ 150 px/s)
@@ -14,6 +14,17 @@ export const SEARCH_TIME = 2000; // 2 seconds
 
 // Hunt phase length (wall ms). The map is small — 90s is plenty.
 export const HUNT_TIME = 90_000;
+
+// Ceiling lamps start helping the hunter this many wall-ms into the hunt:
+// a lamp switches on wherever prey are hiding within LIGHT_REACH of it.
+export const LIGHT_DELAY = 60_000;
+
+// Lamp trigger/lit radius in px (must match the client's rendered pool).
+export const LIGHT_REACH = 130;
+
+// How long a lamp flutters as a hint (wall-ms) before it goes dark again.
+// Leaving its reach re-arms it, so hiding there again hints once more.
+export const LIGHT_HINT = 5_000;
 
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;
@@ -60,6 +71,16 @@ export const MAP = {
 		{ x: 300, y: 680, w: 56, h: 44, id: 7, search: false },
 		{ x: 640, y: 680, w: 56, h: 44, id: 8, search: false },
 	] satisfies Cabinet[],
+	// ceiling lamps — one per office area. LIGHT_DELAY into the hunt they light
+	// up wherever prey are hiding in reach, giving the hunter away-they're-hiding.
+	lights: [
+		{ x: 100, y: 200 },
+		{ x: 100, y: 550 },
+		{ x: 420, y: 150 },
+		{ x: 400, y: 570 },
+		{ x: 650, y: 620 },
+		{ x: 700, y: 200 },
+	] satisfies Light[],
 };
 
 // Collision solids: every rect inflated by the player radius (Minkowski).

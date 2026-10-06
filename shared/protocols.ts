@@ -26,6 +26,12 @@ export interface Rect {
 	h: number;
 }
 
+// A ceiling lamp spot on the floor plan (game px). Static map data.
+export interface Light {
+	x: number;
+	y: number;
+}
+
 export interface Cabinet extends Rect {
 	id: number;
 	search: boolean;
@@ -35,7 +41,7 @@ export type ClientMsg = { type: "input"; payload: Input } | { type: "attack" };
 
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }
-	| { type: "snapshot"; tick: number; players: WirePlayer[] }
-	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number; searchTime: number }
+	| { type: "snapshot"; tick: number; players: WirePlayer[]; lights: boolean[] }
+	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; lights: Light[]; lightReach: number; searchRange: number; searchTime: number }
 	| { type: "boxSearched"; id: number }
 	| { type: "phase"; phase: Phase; endsAt: number; winner: "prey" | "hunters" | null };

@@ -12,6 +12,9 @@ import {
 	solids,
 	HUNT_TIME,
 	END_TIME,
+	LIGHT_REACH,
+	LIGHT_DELAY,
+	LIGHT_HINT,
 	INFECT_REACH,
 	INFECT_COOLDOWN,
 	MAX_PLAYERS,
@@ -91,6 +94,7 @@ interface Room {
 	endsAt: number; // wall-ms deadline for the current phase (0 = none)
 	winner: "prey" | "hunters" | null;
 	poisonId: number;
+	lightHintAt: number[]; // per-lamp wall-ms when the current hint started (0 = armed)
 }
 
 const rooms = new Map<string, Room>();
@@ -109,6 +113,7 @@ function endRound(room: Room, winner: "prey" | "hunters", now: number) {
 
 function resetRound(room: Room) {
 	for (const c of room.cabinets) c.search = false;
+	room.lightHintAt.fill(0); // fresh hints next hunt
 	for (const p of room.players.values()) {
 		p.role = "prey";
 		p.searchT = 0;
@@ -134,6 +139,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 			endsAt: 0,
 			winner: null,
 			poisonId: 1 + Math.floor(Math.random() * MAP.cabinets.length),
+			lightHintAt: MAP.lights.map(() => 0),
 		};
 		rooms.set(code, room);
 	}
@@ -158,6 +164,8 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		type: "map",
 		walls: MAP.walls,
 		cabinets: room.cabinets,
+		lights: MAP.lights,
+		lightReach: LIGHT_REACH,
 		searchRange: SEARCH_RANGE,
 		searchTime: SEARCH_TIME,
 	};
@@ -297,6 +305,32 @@ setInterval(() => {
 			for (const p of room.players.values()) p.wantAttack = false;
 		}
 
+		// lamps: LIGHT_DELAY into the hunt a lamp flutters on as a hint over any
+		// prey hiding within its reach — for LIGHT_HINT ms, then dark again.
+		// Leaving the reach re-arms it, so hiding there again hints once more.
+		const lightsOn = MAP.lights.map(() => false);
+		if (room.phase === "HUNT" && HUNT_TIME - (room.endsAt - now) >= LIGHT_DELAY) {
+			MAP.lights.forEach((l, i) => {
+				let hidden = false;
+				for (const p of room.players.values()) {
+					if (p.role === "prey" && (p.x - l.x) ** 2 + (p.y - l.y) ** 2 <= LIGHT_REACH * LIGHT_REACH) {
+						hidden = true;
+						break;
+					}
+				}
+				if (!hidden) {
+					room.lightHintAt[i] = 0; // re-arm: next hide in reach hints again
+					return;
+				}
+				let t = room.lightHintAt[i] ?? 0;
+				if (!t) {
+					t = now;
+					room.lightHintAt[i] = t;
+				}
+				if (now - t < LIGHT_HINT) lightsOn[i] = true;
+			});
+		}
+
 		const snap: ServerMsg = {
 			type: "snapshot",
 			tick,
@@ -304,6 +338,7 @@ setInterval(() => {
 				room.players.values(),
 				({ id, x, y, role, inputs }) => ({ id, x, y, role, lit: inputs.lit }),
 			),
+			lights: lightsOn,
 		};
 		send(room, snap);
 	});

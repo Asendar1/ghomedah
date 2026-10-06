@@ -9,7 +9,7 @@ Browser multiplayer office hunt: everyone searches cabinets, one finds the poiso
 - **Move:** WASD on a close follow-cam that shows only the room around you.
 - **Search:** hold **E** next to a cabinet. The bar over your head fills. One cabinet holds the poison — the finder becomes the **hunter**.
 - **Survive:** searching happens in a dimly lit office — then the poison is found and the lights die: near-black, with only flashlight cones to see by. **F** toggles your beam (off hides it from everyone, but leaves you nearly blind). Use walls, break line of sight, don't get cornered.
-- **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you.
+- **Hunt:** as hunter you're just as dark — your only edge is a slightly wider lens. **Left-click** next to a survivor to infect them (1.5 s cooldown). Infected become zombies and join you. Hide too long and a ceiling lamp flutters on over you — a 5-second hint for the hunter, then it goes dark.
 - Preys win if at least one survives the 90 seconds; hunters win by converting everyone. Rounds reset themselves.
 
 ## Run it locally
@@ -51,11 +51,12 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 
 ## Checks
 
-No test framework — four runnable probes instead:
+No test framework — five runnable probes instead:
 
 - `node server/probe-ws.cjs` — a fresh client must receive welcome + map + phase (deploy smoke test; pass a `ws://…` URL for any host).
 - `node server/probe-infect.cjs` — the full infection rule, end to end: no click = no convert, one click converts exactly one prey, the cooldown drops early clicks and expires.
 - `node server/probe-flash.cjs` — the flashlight toggle relay: off/on reaches every other client and late joiners, and a payload that omits `lit` defaults back to on.
+- `node server/probe-lights.cjs` — the late-hunt ceiling lamps: nothing before the delay, only the lamp over a hiding prey (a hunter under one doesn't count), the hint goes dark after 5 s, and leaving + returning re-arms it.
 - `node server/bots.cjs --spawn` — the invariant + cadence load check from the table above.
 
 ## Next
