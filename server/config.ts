@@ -4,7 +4,7 @@ import type { Cabinet, Rect } from "@ghomedah/shared";
 export const SPEED = 7; // game px per tick (real ticks ~21/s on Windows ≈ 150 px/s)
 
 // Player hitbox radius in game px — matches the capsule's 1 world unit (≈26.7 px).
-export const PLAYER_R = 26;
+export const PLAYER_R = 10;
 
 // Search reach: how far from a cabinet's edge (game px) a search can trigger.
 // Must exceed PLAYER_R to be reachable; the usable band = SEARCH_RANGE - PLAYER_R. Tune by feel.
