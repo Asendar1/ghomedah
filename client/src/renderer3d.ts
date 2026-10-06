@@ -19,6 +19,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	scene.background = new three.Color("#040355");
 
 	const camera = new three.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
+	camera.position.set(0, 25, 15); // wide default; the per-frame camera block takes over
+	camera.lookAt(0, 0, 0);
 
 	const renderer = new three.WebGLRenderer({ canvas });
 	renderer.shadowMap.enabled = true; // walls and cabinets must block the flashlight
@@ -30,13 +32,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 		renderer.setSize(w, h);
 		camera.aspect = w / h;
 		camera.updateProjectionMatrix();
-		// pull back just enough to keep the whole arena in frame when the window
-		// is portrait-ish (snapped / docked windows)
-		// ponytail: single aspect-keyed distance scale; swap for a real fit-to-bounds
-		// only if someone plays at extreme aspects
-		const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
-		camera.position.set(0, 25 * k, 15 * k);
-		camera.lookAt(0, 0, 0);
 	};
 	setSize();
 	window.addEventListener("resize", setSize);
@@ -44,22 +39,27 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// vision — client-only knobs, zero netcode. Lights need lit materials, so
 	// everything is Lambert now (matte, still the flat blockout look).
 	const VISION = {
-		dark: { color: 0x2a2d45, intensity: 0.5 }, // prey ambient — dark office
-		full: { color: 0xdde3f2, intensity: 1.05 }, // hunter/zombie — whole map
+		dark: { color: 0x2a2d45, intensity: 0.5 }, // prey/zombie ambient — dark office
+		full: { color: 0xdde3f2, intensity: 1.05 }, // the seeker sees everyone
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
+		followScale: 0.35, // camera height/offset scale for the non-seeker follow view
 	};
 	const ambient = new three.AmbientLight(VISION.dark.color, VISION.dark.intensity);
 	scene.add(ambient);
-	// prey flashlight — follows the self figure, points where you walk
-	const cone = new three.SpotLight(VISION.cone.color, VISION.cone.intensity, VISION.cone.dist, VISION.cone.angle, 0.45, 1.2);
+	// one flashlight factory: mine + one per other player (their beams are real lights)
+	const mkFlashlight = (mapSize: number, dist: number) => {
+		const l = new three.SpotLight(VISION.cone.color, VISION.cone.intensity, dist, VISION.cone.angle, 0.45, 1.2);
+		l.castShadow = true;
+		l.shadow.mapSize.set(mapSize, mapSize);
+		l.shadow.camera.near = 0.5;
+		l.shadow.camera.far = 40;
+		l.shadow.bias = -0.0015; // kill acne on flat Lambert floor
+		l.target.position.set(0, 0, 1);
+		scene.add(l, l.target);
+		return l;
+	};
+	const cone = mkFlashlight(1024, VISION.cone.dist); // mine — the big one
 	cone.position.set(0, 2.2, 0);
-	cone.target.position.set(0, 0, 1);
-	cone.castShadow = true;
-	cone.shadow.mapSize.set(1024, 1024);
-	cone.shadow.camera.near = 0.5;
-	cone.shadow.camera.far = 40;
-	cone.shadow.bias = -0.0015; // kill acne on flat Lambert floor
-	scene.add(cone, cone.target);
 
 	const planeMat = new three.MeshLambertMaterial({ color: "#e8e8ea" });
 	const playerMat = new three.MeshLambertMaterial({ color: "#00ffff", emissive: 0x003a3a });
@@ -104,8 +104,13 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// per-run state — lives and dies with this startGame call (StrictMode-safe)
 	const playerMap = new Map<string, three.Group>();
 	let builtMap = false;
-	const facing = { x: 0, z: 1 }; // where my figure last moved — aims the cone
-	let selfX = 0;
+	// per-player derived state: facing from movement drives everyone's flashlight
+	// (same derivation on every client → beams read synced, zero wire fields)
+	const faces = new Map<string, { lx: number; lz: number; fx: number; fz: number }>();
+	const playerCones = new Map<string, three.SpotLight>();
+	let camMode: "full" | "follow" = "follow";
+	const camDesired = new three.Vector3();
+	let selfX = 0; // my interpolated position — the camera's look-at target
 	let selfZ = 0;
 
 	// the office — one box per rect, built once when the map message arrives
@@ -231,26 +236,45 @@ export function startGame(canvas: HTMLCanvasElement) {
 					p.role === "hunter" ? hunterMat : p.role === "zombie" ? zombieMat : p.id === id ? playerMat : enemyMat;
 				for (const part of mesh.userData.parts as three.Mesh[]) part.material = roleMat;
 
-				// my view: prey = dark + flashlight cone (aimed where I last moved),
-				// hunter/zombie = full map. Rendering only — zero netcode.
-				if (p.id === id) {
-					const full = p.role !== "prey";
-					if (Math.hypot(w.x - selfX, w.z - selfZ) > 0.02) {
-						facing.x = w.x - selfX;
-						facing.z = w.z - selfZ;
-						const fl = Math.hypot(facing.x, facing.z);
-						facing.x /= fl;
-						facing.z /= fl;
+				// facing from movement — every client derives it identically, so a
+				// beam's aim needs no wire field and reads synced
+				let f = faces.get(p.id);
+				if (!f) {
+					f = { lx: w.x, lz: w.z, fx: 0, fz: 1 };
+					faces.set(p.id, f);
+				}
+				if (Math.hypot(w.x - f.lx, w.z - f.lz) > 0.02) {
+					f.fx = w.x - f.lx;
+					f.fz = w.z - f.lz;
+					const fl = Math.hypot(f.fx, f.fz);
+					f.fx /= fl;
+					f.fz /= fl;
+				}
+				f.lx = w.x;
+				f.lz = w.z;
+
+				// everyone except the seeker carries a real flashlight — others SEE
+				// its pool sweep the floor
+				let beam = playerCones.get(p.id);
+				if (p.role !== "hunter") {
+					if (!beam) {
+						beam = p.id === id ? cone : mkFlashlight(512, 22);
+						playerCones.set(p.id, beam);
 					}
-					selfX = w.x;
-					selfZ = w.z;
+					beam.visible = true;
+					beam.position.set(w.x, 2.2, w.z);
+					beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
+				} else if (beam) {
+					beam.visible = false; // the seeker has no beam — his edge is the wide view
+				}
+
+				if (p.id === id) {
+					const full = p.role === "hunter"; // the seeker is the ONLY full-map view
+					camMode = full ? "full" : "follow";
 					ambient.color.setHex(full ? VISION.full.color : VISION.dark.color);
 					ambient.intensity = full ? VISION.full.intensity : VISION.dark.intensity;
-					cone.visible = !full;
-					if (!full) {
-						cone.position.set(w.x, 2.2, w.z);
-						cone.target.position.set(w.x + facing.x * 4, 0, w.z + facing.z * 4);
-					}
+					selfX = w.x;
+					selfZ = w.z;
 				}
 
 				//box outline + search meter — only while searching is possible
@@ -293,8 +317,27 @@ export function startGame(canvas: HTMLCanvasElement) {
 				if (!b.players.some((p) => p.id === pid)) {
 					scene.remove(mesh);
 					playerMap.delete(pid);
+					faces.delete(pid);
+					const beam = playerCones.get(pid);
+					if (beam && beam !== cone) {
+						scene.remove(beam, beam.target);
+						playerCones.delete(pid);
+					}
 				}
 			}
+
+			// camera: the seeker sits wide and sees everyone; everyone else rides a
+			// tight follow cam revealing only their surroundings
+			const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
+			if (camMode === "follow") {
+				const s = VISION.followScale * k;
+				camDesired.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
+				camera.lookAt(selfX, 0.5, selfZ);
+			} else {
+				camDesired.set(0, 25 * k, 15 * k);
+				camera.lookAt(0, 0, 0);
+			}
+			camera.position.lerp(camDesired, Math.min(1, dt * 0.007));
 		}
 
 		renderer.render(scene, camera);
