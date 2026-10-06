@@ -12,7 +12,9 @@ export const samples: Snapshot[] = [];
 export let id: string | null = null;
 export let mapData: MapMsg | null = null;
 
-const ws = new WebSocket("ws://192.168.100.2:8787");
+const room = new URLSearchParams(location.search).get("room") ?? "lobby";
+const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+const ws = new WebSocket(`${scheme}//${location.host}/ws?room=${room}`);
 
 ws.addEventListener("message", (e) => {
 	const msg = JSON.parse(e.data) as ServerMsg;

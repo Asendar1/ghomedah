@@ -36,3 +36,6 @@ desktop.ini
 *.njsproj
 *.sln
 *.swp
+
+# Agent planning workspace
+.hermes/

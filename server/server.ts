@@ -21,11 +21,32 @@ interface CustomWebScoket extends WebSocket {
 	id: string;
 }
 
-const players = new Map<string, Players>();
+interface Room {
+	players: Map<string, Players>;
+	sockets: Set<WebSocket>;
+	cabinets: Cabinet[]; // per-room search flags — MAP.cabinets is only the template
+}
 
-wss.on("connection", (ws: CustomWebScoket) => {
+const rooms = new Map<string, Room>();
+
+function send(room: Room, msg: ServerMsg) {
+	const json = JSON.stringify(msg);
+	for (const s of room.sockets) if (s.readyState === WebSocket.OPEN) s.send(json);
+}
+
+wss.on("connection", (ws: CustomWebScoket, req) => {
+	const code = new URL(req.url ?? "", "http://x").searchParams.get("room") ?? "lobby";
+	let room = rooms.get(code);
+	if (!room) {
+		room = {
+			players: new Map(),
+			sockets: new Set(),
+			cabinets: MAP.cabinets.map((c) => ({ ...c })),
+		};
+		rooms.set(code, room);
+	}
 	ws.id = crypto.randomUUID();
-	const [sx, sy] = getRandomPos(ws.id, players);
+	const [sx, sy] = getRandomPos(ws.id, room.players);
 	const newPlayer: Players = {
 		id: ws.id,
 		x: sx,
@@ -33,13 +54,14 @@ wss.on("connection", (ws: CustomWebScoket) => {
 		inputs: { w: false, s: false, a: false, d: false, e: false },
 		searchT: 0,
 	};
-	players.set(ws.id, newPlayer);
+	room.players.set(ws.id, newPlayer);
+	room.sockets.add(ws);
 	const welcome: ServerMsg = { type: "welcome", payload: { id: ws.id } };
 	ws.send(JSON.stringify(welcome));
 	const map: ServerMsg = {
 		type: "map",
 		walls: MAP.walls,
-		cabinets: MAP.cabinets,
+		cabinets: room.cabinets,
 		searchRange: SEARCH_RANGE,
 		searchTime: SEARCH_TIME,
 	};
@@ -48,7 +70,7 @@ wss.on("connection", (ws: CustomWebScoket) => {
 	ws.on("message", (rawMsg: string) => {
 		try {
 			const msg = JSON.parse(rawMsg) as ClientMsg;
-			const player = players.get(ws.id);
+			const player = room.players.get(ws.id);
 
 			if (player === undefined) return;
 
@@ -68,7 +90,9 @@ wss.on("connection", (ws: CustomWebScoket) => {
 	});
 
 	ws.on("close", () => {
-		players.delete(ws.id);
+		room.players.delete(ws.id);
+		room.sockets.delete(ws);
+		if (room.players.size === 0) rooms.delete(code);
 	});
 });
 
@@ -81,65 +105,62 @@ setInterval(() => {
 	const tickDt = Math.min(now - lastTickAt, 250);
 	lastTickAt = now;
 
-	players.forEach((v, k) => {
-		const player: Players = players.get(k) as Players;
+	rooms.forEach((room) => {
+		room.players.forEach((v, k) => {
+			const player: Players = room.players.get(k) as Players;
 
-		const i = player.inputs;
-		const dx = (i.d ? 1 : 0) - (i.a ? 1 : 0);
-		const dy = (i.s ? 1 : 0) - (i.w ? 1 : 0);
-		const len = Math.hypot(dx, dy) || 1;
+			const i = player.inputs;
+			const dx = (i.d ? 1 : 0) - (i.a ? 1 : 0);
+			const dy = (i.s ? 1 : 0) - (i.w ? 1 : 0);
+			const len = Math.hypot(dx, dy) || 1;
 
-		//btw y here is for the z axis. might rename this later
-		// rect collision
-		const moveX = len > 0 ? (dx / len) * SPEED : 0;
-		const moveY = len > 0 ? (dy / len) * SPEED : 0;
+			//btw y here is for the z axis. might rename this later
+			// rect collision
+			const moveX = len > 0 ? (dx / len) * SPEED : 0;
+			const moveY = len > 0 ? (dy / len) * SPEED : 0;
 
-		const nextX = Math.max(10, Math.min(790, player.x + moveX));
-		if (
-			!solids.some((b) => contains(b, nextX, player.y)) &&
-			!collidesWithAnyPlayer({ x: nextX, y: player.y }, player.id, players)
-		) {
-			player.x = nextX;
-		}
-
-		const nextY = Math.max(10, Math.min(790, player.y + moveY));
-		if (
-			!solids.some((b) => contains(b, player.x, nextY)) &&
-			!collidesWithAnyPlayer({ x: player.x, y: nextY }, player.id, players)
-		) {
-			player.y = nextY;
-		}
-
-		// search: the client only sends intent (E held); the tick owns the timer
-		// and the world mutation. release or step away → progress dies with it.
-		// wall-ms accumulate so SEARCH_TIME = real seconds (matches the client bar).
-		// typed: config's `satisfies` keeps `search` literal-typed, Cabinet makes it mutable
-		const nearCabinet: Cabinet | undefined = MAP.cabinets.find(
-			(c) => !c.search && contains(inflate(c, SEARCH_RANGE), player.x, player.y),
-		);
-		if (nearCabinet && player.inputs.e) {
-			player.searchT += tickDt;
-			if (player.searchT >= SEARCH_TIME) {
-				nearCabinet.search = true;
-				player.searchT = 0;
-
-				//broadcast
-				const boxMsg: ServerMsg = { type: "boxSearched", id: nearCabinet.id };
-				const boxJson = JSON.stringify(boxMsg);
-				for (const c of wss.clients)
-					if (c.readyState === WebSocket.OPEN) c.send(boxJson);
+			const nextX = Math.max(10, Math.min(790, player.x + moveX));
+			if (
+				!solids.some((b) => contains(b, nextX, player.y)) &&
+				!collidesWithAnyPlayer({ x: nextX, y: player.y }, player.id, room.players)
+			) {
+				player.x = nextX;
 			}
-		} else {
-			player.searchT = 0;
-		}
-	});
 
-	const snap: ServerMsg = {
-		type: "snapshot",
-		tick,
-		players: Array.from(players.values(), ({ id, x, y }) => ({ id, x, y })),
-	};
-	const snapJson = JSON.stringify(snap);
-	for (const c of wss.clients)
-		if (c.readyState === WebSocket.OPEN) c.send(snapJson);
+			const nextY = Math.max(10, Math.min(790, player.y + moveY));
+			if (
+				!solids.some((b) => contains(b, player.x, nextY)) &&
+				!collidesWithAnyPlayer({ x: player.x, y: nextY }, player.id, room.players)
+			) {
+				player.y = nextY;
+			}
+
+			// search: the client only sends intent (E held); the tick owns the timer
+			// and the world mutation. release or step away → progress dies with it.
+			// wall-ms accumulate so SEARCH_TIME = real seconds (matches the client bar).
+			// typed: config's `satisfies` keeps `search` literal-typed, Cabinet makes it mutable
+			const nearCabinet: Cabinet | undefined = room.cabinets.find(
+				(c) => !c.search && contains(inflate(c, SEARCH_RANGE), player.x, player.y),
+			);
+			if (nearCabinet && player.inputs.e) {
+				player.searchT += tickDt;
+				if (player.searchT >= SEARCH_TIME) {
+					nearCabinet.search = true;
+					player.searchT = 0;
+
+					//broadcast
+					send(room, { type: "boxSearched", id: nearCabinet.id });
+				}
+			} else {
+				player.searchT = 0;
+			}
+		});
+
+		const snap: ServerMsg = {
+			type: "snapshot",
+			tick,
+			players: Array.from(room.players.values(), ({ id, x, y }) => ({ id, x, y })),
+		};
+		send(room, snap);
+	});
 }, TICK_MS);
