@@ -29,7 +29,7 @@ export interface Cabinet extends Rect {
 	search: boolean;
 }
 
-export type ClientMsg = { type: "input"; payload: Input };
+export type ClientMsg = { type: "input"; payload: Input } | { type: "attack" };
 
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }

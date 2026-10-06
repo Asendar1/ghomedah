@@ -36,9 +36,9 @@ export default function App() {
           : 'HUNTERS WIN'
   const you =
     me?.role === 'hunter'
-      ? 'YOU ARE THE HUNTER — hold E to infect'
+      ? 'YOU ARE THE HUNTER — click to infect'
       : me?.role === 'zombie'
-        ? 'INFECTED — hold E to infect the rest'
+        ? 'INFECTED — click to infect the rest'
         : ''
 
   return (

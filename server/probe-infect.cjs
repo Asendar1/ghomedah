@@ -1,8 +1,10 @@
-// E2E check: infection is an ACTION (hold E while touching) — not proximity.
-// A (first joiner, spawns inside cabinet 1's search band) searches the planted
-// poison (id 1) -> becomes hunter. B (second joiner) stands still nearby.
-// Asserts: adjacent WITHOUT E -> B stays prey (the reported bug), then E held ->
-// B turns zombie (seen in both clients' snapshots). ~5s.
+// E2E check: infection is a CLICK (one swing) with a cooldown — not proximity,
+// not a hold. Wire-wise the probe sends the same {type:"attack"} a left-click sends.
+// A (1st joiner, in cabinet 1's search band) searches the planted poison (id 1)
+// -> hunter, walks to idle B. C joins into reach after the walk. Asserts: with two
+// prey in reach and NO click they both stay prey; one click converts exactly one;
+// a click during the cooldown is dropped (the other stays prey); after
+// INFECT_COOLDOWN the next click converts them.
 // Usage: node server/probe-infect.cjs   (self-stages server/_probe, cleans up)
 const fs = require("fs");
 const path = require("path");
@@ -17,12 +19,21 @@ fs.mkdirSync(dir, { recursive: true });
 const src = fs
 	.readFileSync(path.join(__dirname, "server.ts"), "utf8")
 	.replaceAll("8787", String(PORT))
-	// deterministic spawns: A next to cabinet 1, B a short clear walk down
+	// deterministic spawns: A next to cabinet 1, B a short clear walk down,
+	// C joins later straight into A's swing reach
 	.replace(
 		"const [sx, sy] = getRandomPos(ws.id, room.players);",
-		"const [sx, sy] = [[108, 158], [100, 260]][room.players.size] ?? getRandomPos(ws.id, room.players);",
+		"const [sx, sy] = [[108, 158], [100, 260], [150, 215]][room.players.size] ?? getRandomPos(ws.id, room.players);",
 	)
-	.replaceAll("1 + Math.floor(Math.random() * MAP.cabinets.length)", "1"); // poison = cabinet 1
+	.replaceAll("1 + Math.floor(Math.random() * MAP.cabinets.length)", "1") // poison = cabinet 1
+	.replace(
+		"h.wantAttack = false;",
+		"h.wantAttack = false; console.error('[tap]', h.id.slice(0, 4), 'readyAt', h.infectReadyAt, 'now', Date.now());",
+	)
+	.replace(
+		'if (target) target.role = "zombie";',
+		'if (target) target.role = "zombie"; console.error(\'[swing]\', h.id.slice(0, 4), \'->\', target ? \'hit\' : \'WHIFF\');',
+	);
 fs.writeFileSync(path.join(dir, "server.ts"), src);
 for (const f of ["config.ts", "helper.ts"]) fs.copyFileSync(path.join(__dirname, f), path.join(dir, f));
 
@@ -43,7 +54,10 @@ function mkClient() {
 		if (ws.readyState === WebSocket.OPEN)
 			ws.send(JSON.stringify({ type: "input", payload: { w: false, s: false, a: false, d: false, e: false, ...o } }));
 	};
-	return { st, send };
+	const attack = () => {
+		if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "attack" }));
+	};
+	return { st, send, attack };
 }
 
 const role = (c, id) => c.st.players.find((p) => p.id === id)?.role;
@@ -82,36 +96,50 @@ function check(cond, label) {
 		check(A.st.boxes.includes(1), "boxSearched frame for cabinet 1");
 		check(role(A, A.st.id) === "hunter", "A is the hunter");
 
-		// 2. walk A to idle B (B spawns 102px down, no obstacles between)
+		// 2. walk A down to idle B (clear path), stop pressed up (< 55px)
 		let reached = false;
-		let holdE = false;
 		mover = setInterval(() => {
 			const me = pos(A, A.st.id);
 			const b = pos(A, B.st.id);
-			if (!me || !b) return;
-			if (reached) {
-				A.send({ e: holdE }); // stationary, just hold the attack key
-				return;
-			}
+			if (!me || !b || reached) return;
 			if (Math.hypot(b.x - me.x, b.y - me.y) < 55) {
 				reached = true;
-				console.log("OK  A reached B (pressed up, dist < 55)");
+				A.send({}); // stop pressing
+				console.log("OK  A reached B (dist < 55)");
 				return;
 			}
 			A.send({ s: b.y - me.y > 8, w: b.y - me.y < -8, d: b.x - me.x > 8, a: b.x - me.x < -8 });
 		}, 100);
 		await waitFor(() => reached, 10000, "walk completed");
 
-		// 3. the regression: adjacent, NO E held -> B must stay prey
+		// 3. C joins right after A stops: inside swing reach, so click 1 can't
+		// end the round (last-prey check) and the cooldown has a live target
+		const C = mkClient();
+		await sleep(500);
+		check(role(A, C.st.id) === "prey", "C joined as prey, in reach");
+
+		// 4. the regression: two prey in reach, NO click -> both stay prey
 		await sleep(400);
-		check(role(B, B.st.id) === "prey", "no E held -> B still prey");
+		check(role(A, B.st.id) === "prey" && role(A, C.st.id) === "prey", "no click -> both still prey");
 
-		// 4. hold E -> converts; both clients see it in snapshots
-		holdE = true;
-		await waitFor(() => role(B, B.st.id) === "zombie", 1200, "E held -> B turned zombie");
-		check(role(A, B.st.id) === "zombie", "A's snapshot agrees");
+		// 5. click 1 -> exactly ONE converts (the nearest); cooldown starts now
+		const zOf = () => [B.st.id, C.st.id].filter((i) => role(A, i) === "zombie");
+		A.attack();
+		await waitFor(() => zOf().length === 1, 1200, "click 1 -> exactly one prey converted");
+		const first = zOf()[0];
+		const other = first === B.st.id ? C.st.id : B.st.id;
 
-		console.log("INFECT-E OK");
+		// 6. click 2 during the cooldown -> dropped; the other stays prey
+		A.attack();
+		await sleep(450);
+		check(role(A, other) === "prey", "click during cooldown -> other still prey");
+
+		// 7. after the cooldown, click 3 -> the other converts
+		await sleep(1200); // click 1 ~t=0, click 2 ~t=150; cooldown 1500ms
+		A.attack();
+		await waitFor(() => role(A, other) === "zombie", 1200, "click after cooldown -> other turned zombie");
+
+		console.log("INFECT-CLICK OK");
 		process.exitCode = 0;
 	} catch (e) {
 		console.log(String(e.message || e));

@@ -18,10 +18,15 @@ export const HUNT_TIME = 90_000;
 // How long the result stays on screen before the room resets itself.
 export const END_TIME = 10_000;
 
-// Infection reach in px — the infected holds E while this close to a prey to
-// convert them (same interact key as search). Must exceed the 52px movement
-// standoff; 55 = pressed up against them. Tune by feel.
+// Infection reach in px — a TAPPED E (one swing) converts the nearest prey
+// within this. Must exceed the 52px movement standoff; 55 = pressed up against
+// them. Tune by feel.
 export const INFECT_REACH = 55;
+
+// Infection cooldown (wall ms): after a swing the infected cannot swing again
+// until this elapses. Short enough to keep chases chasing, long enough to give
+// prey a window to break away.
+export const INFECT_COOLDOWN = 1500;
 
 // Max players per room.
 export const MAX_PLAYERS = 8;

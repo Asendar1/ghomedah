@@ -79,9 +79,18 @@ function onBlur() {
 	sendInput();
 }
 
+// left-click = attack (one swing per click). A click is an EVENT — sent as one
+// message so it can't fall between ticks like a sampled held-bit could.
+function onMouseDown(e: MouseEvent) {
+	if (e.button !== 0) return;
+	const msg: ClientMsg = { type: "attack" };
+	ws.send(JSON.stringify(msg));
+}
+
 window.addEventListener("keydown", onKeyDown);
 window.addEventListener("keyup", onKeyUp);
 window.addEventListener("blur", onBlur);
+window.addEventListener("mousedown", onMouseDown);
 
 // dev-only: on hot reload, dispose this module's socket + listeners,
 // otherwise every save leaks a connection and a set of listeners
@@ -91,5 +100,6 @@ if (import.meta.hot) {
 		window.removeEventListener("keydown", onKeyDown);
 		window.removeEventListener("keyup", onKeyUp);
 		window.removeEventListener("blur", onBlur);
+		window.removeEventListener("mousedown", onMouseDown);
 	});
 }

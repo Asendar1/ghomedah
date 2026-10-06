@@ -9,6 +9,7 @@ import {
 	HUNT_TIME,
 	END_TIME,
 	INFECT_REACH,
+	INFECT_COOLDOWN,
 	MAX_PLAYERS,
 } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg, Cabinet, Phase, Role } from "@ghomedah/shared";
@@ -26,6 +27,8 @@ interface Players {
 	inputs: Input;
 	searchT: number;
 	role: Role;
+	wantAttack: boolean; // queued by the attack msg, resolved by the tick
+	infectReadyAt: number; // wall-ms until the next swing is allowed
 }
 
 interface CustomWebScoket extends WebSocket {
@@ -61,6 +64,8 @@ function resetRound(room: Room) {
 	for (const p of room.players.values()) {
 		p.role = "prey";
 		p.searchT = 0;
+		p.wantAttack = false;
+		p.infectReadyAt = 0;
 	}
 	room.phase = "SEARCH";
 	room.endsAt = 0;
@@ -94,6 +99,8 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		inputs: { w: false, s: false, a: false, d: false, e: false },
 		searchT: 0,
 		role: "prey",
+		wantAttack: false,
+		infectReadyAt: 0,
 	};
 	room.players.set(ws.id, newPlayer);
 	room.sockets.add(ws);
@@ -126,6 +133,9 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 					d: !!p?.d,
 					e: !!p?.e,
 				};
+			} else if (msg.type === "attack") {
+				// handlers only queue intent — the tick owns the swing + world mutation
+				player.wantAttack = true;
 			}
 		} catch (err) {
 			console.error("failed to parse incoming player message: ", err);
@@ -205,18 +215,27 @@ setInterval(() => {
 			}
 		});
 
-		// infection — the infected HOLDS E (same interact key as search) while
-		// touching a prey to convert them; no more auto-convert on approach.
+		// infection — the infected TAP E (one keydown = one swing): converts the
+		// nearest prey within reach, then locked for INFECT_COOLDOWN. Taps during
+		// the cooldown (or outside HUNT) are dropped.
 		// n <= MAX_PLAYERS, O(n²) is fine; revisit only if the cap grows
 		if (room.phase === "HUNT") {
 			for (const h of room.players.values()) {
-				if (h.role === "prey") continue;
+				if (h.role === "prey" || !h.wantAttack) continue;
+				h.wantAttack = false;
+				if (now < h.infectReadyAt) continue;
+				h.infectReadyAt = now + INFECT_COOLDOWN;
+				let target: Players | undefined;
+				let best = INFECT_REACH * INFECT_REACH;
 				for (const v of room.players.values()) {
 					if (v.role !== "prey") continue;
-					if (h.inputs.e && (h.x - v.x) ** 2 + (h.y - v.y) ** 2 < INFECT_REACH * INFECT_REACH) {
-						v.role = "zombie";
+					const d = (h.x - v.x) ** 2 + (h.y - v.y) ** 2;
+					if (d < best) {
+						best = d;
+						target = v;
 					}
 				}
+				if (target) target.role = "zombie";
 			}
 
 			const preyLeft = [...room.players.values()].filter((p) => p.role === "prey").length;
@@ -224,6 +243,9 @@ setInterval(() => {
 			else if (now >= room.endsAt) endRound(room, "prey", now);
 		} else if (room.phase === "END" && now >= room.endsAt) {
 			resetRound(room);
+		} else {
+			// SEARCH / mid-END: taps do nothing — drop any queued swing
+			for (const p of room.players.values()) p.wantAttack = false;
 		}
 
 		const snap: ServerMsg = {
