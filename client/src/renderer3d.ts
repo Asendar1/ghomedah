@@ -41,7 +41,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const VISION = {
 		dark: { color: 0x2a2d45, intensity: 0.5 }, // everyone, always — the seeker just sees more of it
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
-		followScale: 0.35, // camera height/offset scale for the non-seeker follow view
+		followScale: 0.35, // hider camera height/offset scale
+		seekerScale: 0.6, // the seeker's only edge: a wider lens, not the whole map
 	};
 	const ambient = new three.AmbientLight(VISION.dark.color, VISION.dark.intensity);
 	scene.add(ambient);
@@ -107,7 +108,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// (same derivation on every client → beams read synced, zero wire fields)
 	const faces = new Map<string, { lx: number; lz: number; fx: number; fz: number }>();
 	const playerCones = new Map<string, three.SpotLight>();
-	let camMode: "full" | "follow" = "follow";
+	let camScale = 0.35; // set per role each frame (VISION scales)
 	let selfX = 0; // my interpolated position — the camera's look-at target
 	let selfZ = 0;
 
@@ -263,8 +264,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 				beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
 
 				if (p.id === id) {
-					// the seeker's ONLY edge is the wider camera — same darkness as everyone
-					camMode = p.role === "hunter" ? "full" : "follow";
+					// the seeker's ONLY edge is a wider version of the same follow cam
+					camScale = p.role === "hunter" ? VISION.seekerScale : VISION.followScale;
 					selfX = w.x;
 					selfZ = w.z;
 				}
@@ -318,17 +319,12 @@ export function startGame(canvas: HTMLCanvasElement) {
 				}
 			}
 
-			// camera: the seeker sits wide; everyone else is rigidly locked above
-			// their player — no lerp, no sway (snapshot interpolation is the smoothing)
+			// camera: always locked above the player, no sway; the seeker just gets a
+			// wider lens on the same ride
 			const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
-			if (camMode === "follow") {
-				const s = VISION.followScale * k;
-				camera.position.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
-				camera.lookAt(selfX, 0.5, selfZ);
-			} else {
-				camera.position.set(0, 25 * k, 15 * k);
-				camera.lookAt(0, 0, 0);
-			}
+			const s = camScale * k;
+			camera.position.set(Math.max(-13, Math.min(13, selfX)), 25 * s, Math.max(-13, Math.min(13, selfZ + 15 * s)));
+			camera.lookAt(selfX, 0.5, selfZ);
 		}
 
 		renderer.render(scene, camera);
