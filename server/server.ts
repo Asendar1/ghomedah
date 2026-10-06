@@ -12,9 +12,9 @@ import {
 	solids,
 	HUNT_TIME,
 	END_TIME,
-	LIGHT_REACH,
-	LIGHT_DELAY,
-	LIGHT_HINT,
+	GHOST_DELAY,
+	GHOST_VISIBLE,
+	GHOST_CYCLE,
 	INFECT_REACH,
 	INFECT_COOLDOWN,
 	MAX_PLAYERS,
@@ -80,6 +80,10 @@ interface Players {
 	role: Role;
 	wantAttack: boolean; // queued by the attack msg, resolved by the tick
 	infectReadyAt: number; // wall-ms until the next swing is allowed
+	ghostAt: number; // wall-ms when the current ghost blink cycle started (0 = off)
+	ghostX: number; // where the ghost was captured at cycle start
+	ghostY: number;
+	ghost: { x: number; y: number } | null; // visible NOW (server-decided), else null
 }
 
 interface CustomWebScoket extends WebSocket {
@@ -94,7 +98,6 @@ interface Room {
 	endsAt: number; // wall-ms deadline for the current phase (0 = none)
 	winner: "prey" | "hunters" | null;
 	poisonId: number;
-	lightHintAt: number[]; // per-lamp wall-ms when the current hint started (0 = armed)
 }
 
 const rooms = new Map<string, Room>();
@@ -113,12 +116,13 @@ function endRound(room: Room, winner: "prey" | "hunters", now: number) {
 
 function resetRound(room: Room) {
 	for (const c of room.cabinets) c.search = false;
-	room.lightHintAt.fill(0); // fresh hints next hunt
 	for (const p of room.players.values()) {
 		p.role = "prey";
 		p.searchT = 0;
 		p.wantAttack = false;
 		p.infectReadyAt = 0;
+		p.ghostAt = 0;
+		p.ghost = null;
 	}
 	room.phase = "SEARCH";
 	room.endsAt = 0;
@@ -139,7 +143,6 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 			endsAt: 0,
 			winner: null,
 			poisonId: 1 + Math.floor(Math.random() * MAP.cabinets.length),
-			lightHintAt: MAP.lights.map(() => 0),
 		};
 		rooms.set(code, room);
 	}
@@ -155,6 +158,10 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		role: "prey",
 		wantAttack: false,
 		infectReadyAt: 0,
+		ghostAt: 0,
+		ghostX: 0,
+		ghostY: 0,
+		ghost: null,
 	};
 	room.players.set(ws.id, newPlayer);
 	room.sockets.add(ws);
@@ -164,8 +171,6 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		type: "map",
 		walls: MAP.walls,
 		cabinets: room.cabinets,
-		lights: MAP.lights,
-		lightReach: LIGHT_REACH,
 		searchRange: SEARCH_RANGE,
 		searchTime: SEARCH_TIME,
 	};
@@ -270,6 +275,20 @@ setInterval(() => {
 			} else {
 				player.searchT = 0;
 			}
+
+			// ghost echo: GHOST_DELAY into the hunt a glowing copy of each hiding
+			// prey blinks at the spot where they stood when the cycle started —
+			// GHOST_VISIBLE on, the rest of GHOST_CYCLE off. Move, or stay pinned.
+			if (room.phase === "HUNT" && HUNT_TIME - (room.endsAt - now) >= GHOST_DELAY && player.role === "prey") {
+				if (now - player.ghostAt >= GHOST_CYCLE) {
+					player.ghostAt = now;
+					player.ghostX = player.x;
+					player.ghostY = player.y;
+				}
+				player.ghost = now - player.ghostAt < GHOST_VISIBLE ? { x: player.ghostX, y: player.ghostY } : null;
+			} else {
+				player.ghost = null;
+			}
 		});
 
 		// infection — the infected TAP E (one keydown = one swing): converts the
@@ -305,40 +324,13 @@ setInterval(() => {
 			for (const p of room.players.values()) p.wantAttack = false;
 		}
 
-		// lamps: LIGHT_DELAY into the hunt a lamp flutters on as a hint over any
-		// prey hiding within its reach — for LIGHT_HINT ms, then dark again.
-		// Leaving the reach re-arms it, so hiding there again hints once more.
-		const lightsOn = MAP.lights.map(() => false);
-		if (room.phase === "HUNT" && HUNT_TIME - (room.endsAt - now) >= LIGHT_DELAY) {
-			MAP.lights.forEach((l, i) => {
-				let hidden = false;
-				for (const p of room.players.values()) {
-					if (p.role === "prey" && (p.x - l.x) ** 2 + (p.y - l.y) ** 2 <= LIGHT_REACH * LIGHT_REACH) {
-						hidden = true;
-						break;
-					}
-				}
-				if (!hidden) {
-					room.lightHintAt[i] = 0; // re-arm: next hide in reach hints again
-					return;
-				}
-				let t = room.lightHintAt[i] ?? 0;
-				if (!t) {
-					t = now;
-					room.lightHintAt[i] = t;
-				}
-				if (now - t < LIGHT_HINT) lightsOn[i] = true;
-			});
-		}
-
 		const snap: ServerMsg = {
 			type: "snapshot",
 			tick,
 			players: Array.from(
 				room.players.values(),
-				({ id, x, y, role, inputs }) => ({ id, x, y, role, lit: inputs.lit }),
+				({ id, x, y, role, inputs, ghost }) => ({ id, x, y, role, lit: inputs.lit, ghost }),
 			),
-			lights: lightsOn,
 		};
 		send(room, snap);
 	});

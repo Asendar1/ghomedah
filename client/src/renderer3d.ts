@@ -44,7 +44,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 		// the flashlights are the only light there is
 		ambient: { color: 0x2a2d45, search: 0.9, hunt: 0.07 },
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
-		lamp: { color: 0xffe9b8, intensity: 3.2 }, // ceiling lamps (late-hunt help)
 		followScale: 0.35, // hider camera height/offset scale
 		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
 	};
@@ -115,7 +114,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// (same derivation on every client → beams read synced, zero wire fields)
 	const faces = new Map<string, { lx: number; lz: number; fx: number; fz: number }>();
 	const playerCones = new Map<string, three.SpotLight>();
-	const lamps: { spot: three.SpotLight; fixture: three.Mesh }[] = []; // ceiling lamps, from the map
+	const ghostMap = new Map<string, three.Group>(); // blink-echo copies (one per player)
 	let camScale = 0.35; // set per role each frame (VISION scales)
 	let selfX = 0; // my interpolated position — the camera's look-at target
 	let selfZ = 0;
@@ -175,6 +174,19 @@ export function startGame(canvas: HTMLCanvasElement) {
 		return g;
 	}
 
+	// the ghost echo: a glowing copy of a hiding prey — emissive, so it reads in
+	// the near-black hunt without any actual light (tune emissive by feel)
+	const ghostMat = new three.MeshLambertMaterial({ color: "#d9d9e6", emissive: 0x9c9cb4 });
+	function mkGhost() {
+		const g = new three.Group();
+		const body = new three.Mesh(torsoGeo, ghostMat);
+		body.position.y = 0.55;
+		const head = new three.Mesh(headGeo, ghostMat);
+		head.position.y = 1.5;
+		g.add(body, head);
+		return g;
+	}
+
 	let cabinets: Cabinet[] = [];
 	const lids: three.Group[] = [];
 	let searchBoxes: Rect[] = [];
@@ -199,35 +211,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 			searchMs = md.searchTime;
 			const c0 = md.cabinets[0]; // all cabinets share size
 			if (c0) outline.scale.set(c0.w * SCALE, 1.1, c0.h * SCALE);
-
-			// ceiling lamps: fixtures always in the scene; each spot + plate lights
-			// up when the server says the lamp is on (late-hunt help for the hunter)
-			const reachW = md.lightReach * SCALE;
-			const lampGeo = new three.BoxGeometry(0.7, 0.12, 0.7);
-			for (const L of md.lights) {
-				const w = toWorld(L.x, L.y);
-				// per-lamp material: the plate itself glows when the lamp is on
-				const fixture = new three.Mesh(lampGeo, new three.MeshLambertMaterial({ color: "#3a3b44" }));
-				fixture.position.set(w.x, 2.62, w.z);
-				const spot = new three.SpotLight(
-					VISION.lamp.color,
-					VISION.lamp.intensity,
-					reachW * 2,
-					Math.atan(reachW / 2.5),
-					0.55,
-					1.2,
-				);
-				spot.position.set(w.x, 2.5, w.z);
-				spot.target.position.set(w.x, 0, w.z);
-				spot.castShadow = true;
-				spot.shadow.mapSize.set(512, 512);
-				spot.shadow.camera.near = 0.5;
-				spot.shadow.camera.far = 40;
-				spot.shadow.bias = -0.0015;
-				spot.visible = false; // until the first snapshot says otherwise
-				scene.add(fixture, spot, spot.target);
-				lamps.push({ spot, fixture });
-			}
 		}
 
 		// searched cabinets pop their lid open (driven by the server flag)
@@ -305,6 +288,21 @@ export function startGame(canvas: HTMLCanvasElement) {
 				beam.position.set(w.x, 2.2, w.z);
 				beam.target.position.set(w.x + f.fx * 4, 0, w.z + f.fz * 4);
 
+				// the ghost echo: blink a glowing copy at the captured spot
+				let ghostMesh = ghostMap.get(p.id);
+				if (!ghostMesh) {
+					ghostMesh = mkGhost();
+					scene.add(ghostMesh);
+					ghostMap.set(p.id, ghostMesh);
+				}
+				if (p.ghost) {
+					const gw = toWorld(p.ghost.x, p.ghost.y);
+					ghostMesh.position.set(gw.x, 0, gw.z);
+					ghostMesh.visible = true;
+				} else {
+					ghostMesh.visible = false;
+				}
+
 				if (p.id === id) {
 					// the seeker's ONLY edge is a wider version of the same follow cam
 					camScale = p.role === "hunter" ? VISION.seekerScale : VISION.followScale;
@@ -358,22 +356,11 @@ export function startGame(canvas: HTMLCanvasElement) {
 						scene.remove(beam, beam.target);
 						playerCones.delete(pid);
 					}
-				}
-			}
-
-			// lamp states ride every snapshot — a lamp that's on flutters like a
-			// dying fluorescent (mostly bright, random dropouts); off is dark
-			for (let i = 0; i < lamps.length; i++) {
-				const on = b.lights[i] === true;
-				const mat = lamps[i].fixture.material as three.MeshLambertMaterial;
-				lamps[i].spot.visible = on;
-				if (on) {
-					const fl = Math.random() < 0.15 ? 0.06 : 0.62 + Math.random() * 0.38;
-					lamps[i].spot.intensity = VISION.lamp.intensity * fl;
-					mat.emissive.setHex(0xffe9b8);
-					mat.emissiveIntensity = fl;
-				} else {
-					mat.emissive.setHex(0x000000);
+					const gm = ghostMap.get(pid);
+					if (gm) {
+						scene.remove(gm);
+						ghostMap.delete(pid);
+					}
 				}
 			}
 
