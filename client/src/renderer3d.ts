@@ -65,10 +65,13 @@ export function startGame(canvas: HTMLCanvasElement) {
 	cone.position.set(0, 2.2, 0);
 
 	const planeMat = new three.MeshLambertMaterial({ color: "#e8e8ea" });
-	const playerMat = new three.MeshLambertMaterial({ color: "#00ffff", emissive: 0x003a3a });
-	const enemyMat = new three.MeshLambertMaterial({ color: "#fafa00", emissive: 0x3a3a00 });
-	const hunterMat = new three.MeshLambertMaterial({ color: "#ff2e2e", emissive: 0x3a0000 });
-	const zombieMat = new three.MeshLambertMaterial({ color: "#3dff6e", emissive: 0x003a12 });
+	// no emissive: a body may only be seen by ACTUAL light — a flashlight beam
+	// or the dim search-phase ambient. In the near-black hunt dark a body is
+	// invisible until someone's beam sweeps it (that's what makes hiding work).
+	const playerMat = new three.MeshLambertMaterial({ color: "#00ffff" });
+	const enemyMat = new three.MeshLambertMaterial({ color: "#fafa00" });
+	const hunterMat = new three.MeshLambertMaterial({ color: "#ff2e2e" });
+	const zombieMat = new three.MeshLambertMaterial({ color: "#3dff6e" });
 	const wallMat = new three.MeshLambertMaterial({ color: "#2c2c34" });
 	const cabinetMat = new three.MeshLambertMaterial({ color: "#5a5a62" });
 	const lidMat = new three.MeshLambertMaterial({ color: "#6e6e76" });
