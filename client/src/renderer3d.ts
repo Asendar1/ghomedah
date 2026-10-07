@@ -278,9 +278,27 @@ export function startGame(canvas: HTMLCanvasElement) {
 	{
 		const gl = new GLTFLoader();
 		const loadGlb = (url: string) => new Promise<three.Group>((res, rej) => gl.load(url, (g) => res(g.scene), undefined, rej));
-		void Promise.allSettled([loadGlb("/models/props/wall.glb"), loadGlb("/models/props/bookcase.glb")]).then(([w, b]) => {
+		void Promise.allSettled([
+			loadGlb("/models/props/wall.glb"),
+			loadGlb("/models/props/bookcase.glb"),
+			loadGlb("/models/props/office.glb"), // hand-modelled office — optional for now
+		]).then(([w, bk, o]) => {
 			if (w.status === "fulfilled") props.wall = w.value;
-			if (b.status === "fulfilled") props.bookcase = b.value;
+			if (bk.status === "fulfilled") props.bookcase = bk.value;
+			if (o.status === "fulfilled") {
+				// the hand-modelled office draws exactly as exported; its floor
+				// replaces the built-in plane. Hitboxes stay the server rects —
+				// a model never touches collision.
+				o.value.traverse((n) => {
+					const m = n as three.Mesh;
+					if (m.isMesh) {
+						m.receiveShadow = true;
+						m.castShadow = true;
+					}
+				});
+				scene.add(o.value);
+				plane.visible = false;
+			}
 			propsReady = true; // even on failure — the map always builds, boxes stand in
 		});
 	}
