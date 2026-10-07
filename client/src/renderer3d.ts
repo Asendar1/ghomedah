@@ -8,13 +8,16 @@ import { contains, inflate } from "@ghomedah/shared/geometry";
 
 const INTERP_MS = 66;
 
-// The server speaks px: positions in 0..800. This arena is 30 world units wide.
-// This is the border crossing between the two coordinate spaces.
-const WORLD = 30;
-const SCALE = WORLD / 800;
+// The server speaks px and this is the border crossing to world metres: the px
+// GRID is fixed (1 px = 3.75 cm — 30 m at the original 800). A bigger office
+// keeps the scale and grows outward: `half` is the map centre in px, taken
+// from the map msg, so every coordinate stays relative to centre.
+const SCALE = 30 / 800;
+
+let half = 400; // px centre — overwritten from md.size the moment the map lands
 
 function toWorld(gx: number, gy: number) {
-	return { x: (gx - 400) * SCALE, z: (gy - 400) * SCALE };
+	return { x: (gx - half) * SCALE, z: (gy - half) * SCALE };
 }
 
 export function startGame(canvas: HTMLCanvasElement) {
@@ -83,7 +86,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 		side: three.BackSide, // only renders interior/back faces
 	});
 
-	const planeGeo = new three.PlaneGeometry(120, 120); // bigger than the arena so widescreen shows floor, not void
+	const planeGeo = new three.PlaneGeometry(300, 300); // far past any arena (covers ≤ 200 m maps) so widescreen shows floor, not void
 	const plane = new three.Mesh(planeGeo, planeMat);
 	plane.rotation.x = -Math.PI / 2;
 	plane.receiveShadow = true;
@@ -345,6 +348,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 		if (mapData && !builtMap && propsReady) {
 			builtMap = true;
 			const md = mapData;
+			half = md.size / 2;
 			for (const r of md.walls) addWall(r);
 			for (const r of md.cabinets) addCabinet(r);
 			searchBoxes = md.cabinets.map((c) => inflate(c, md.searchRange));

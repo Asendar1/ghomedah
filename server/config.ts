@@ -41,6 +41,12 @@ export const INFECT_COOLDOWN = 1500;
 // Max players per room.
 export const MAX_PLAYERS = 8;
 
+// The play area in game pixels. The px grid is FIXED (1 px = 3.75 cm — speeds,
+// reach and collision are all in these units); a bigger office = a bigger
+// number here + new MAP rects inside it. The client centres the world on
+// size / 2, and it rides the map msg so nothing drifts.
+export const MAP_SIZE = 800;
+
 // The office. Single source of truth for shape: the server collides with these
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
 export const MAP = {

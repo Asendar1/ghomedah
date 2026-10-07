@@ -1,4 +1,4 @@
-import { PLAYER_R, solids } from "./config.ts";
+import { PLAYER_R, MAP_SIZE, solids } from "./config.ts";
 import { contains } from "@ghomedah/shared/geometry";
 
 //i don't want to export and import tsc shutup
@@ -7,8 +7,8 @@ export function getRandomPos(id: string, players: Map<string, { x: number; y: nu
 	let sy = 0;
 
 	do {
-		sx = Math.floor(Math.random() * 800);
-		sy = Math.floor(Math.random() * 800);
+		sx = Math.floor(Math.random() * MAP_SIZE);
+		sy = Math.floor(Math.random() * MAP_SIZE);
 	} while (solids.some((b) => contains(b, sx, sy)) || collidesWithAnyPlayer( {x: sx, y: sy}, id, players));
 	return [sx, sy];
 }

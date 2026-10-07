@@ -42,7 +42,7 @@ export type ClientMsg =
 export type ServerMsg =
 	| { type: "welcome"; payload: { id: string } }
 	| { type: "snapshot"; tick: number; players: WirePlayer[] }
-	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number; searchTime: number }
+	| { type: "map"; walls: Rect[]; cabinets: Cabinet[]; searchRange: number; searchTime: number; size: number }
 	| { type: "boxSearched"; id: number }
 	| { type: "newRound" }
 	| { type: "phase"; phase: Phase; endsAt: number; winner: "prey" | "hunters" | null; round: number };

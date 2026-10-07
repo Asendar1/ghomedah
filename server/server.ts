@@ -17,6 +17,7 @@ import {
 	INFECT_REACH,
 	INFECT_COOLDOWN,
 	MAX_PLAYERS,
+	MAP_SIZE,
 	SCORE,
 } from "./config.ts";
 import type { ClientMsg, Input, ServerMsg, Cabinet, Phase, Role } from "@ghomedah/shared";
@@ -186,6 +187,7 @@ wss.on("connection", (ws: CustomWebScoket, req) => {
 		cabinets: room.cabinets,
 		searchRange: SEARCH_RANGE,
 		searchTime: SEARCH_TIME,
+		size: MAP_SIZE,
 	};
 	ws.send(JSON.stringify(map));
 	const ph: ServerMsg = { type: "phase", phase: room.phase, endsAt: room.endsAt, winner: room.winner, round: room.round };
@@ -254,7 +256,7 @@ setInterval(() => {
 			const moveX = len > 0 ? (dx / len) * SPEED : 0;
 			const moveY = len > 0 ? (dy / len) * SPEED : 0;
 
-			const nextX = Math.max(10, Math.min(790, player.x + moveX));
+			const nextX = Math.max(10, Math.min(MAP_SIZE - 10, player.x + moveX));
 			if (
 				!solids.some((b) => contains(b, nextX, player.y)) &&
 				!collidesWithAnyPlayer({ x: nextX, y: player.y }, player.id, room.players)
@@ -262,7 +264,7 @@ setInterval(() => {
 				player.x = nextX;
 			}
 
-			const nextY = Math.max(10, Math.min(790, player.y + moveY));
+			const nextY = Math.max(10, Math.min(MAP_SIZE - 10, player.y + moveY));
 			if (
 				!solids.some((b) => contains(b, player.x, nextY)) &&
 				!collidesWithAnyPlayer({ x: player.x, y: nextY }, player.id, room.players)
