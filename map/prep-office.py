@@ -71,18 +71,8 @@ for o in doomed:
 if doomed:
     bpy.ops.object.delete()
 
-# ---- shift: floor to z=0, plan centred on x/y
-meshes = [o for o in SCN.objects if o.type == "MESH"]
-mn2, mx2 = world_bbox(meshes)
-cx, cy = (mn2.x + mx2.x) / 2, (mn2.y + mx2.y) / 2
-shift = Vector((-cx, -cy, -fz))
-roots = [o for o in SCN.objects if o.parent is None]
-for r in roots:
-    r.location = r.location + shift
-bpy.context.view_layer.update()
-mn3, mx3 = world_bbox(meshes)
-print(f"PREPPED BBOX min=({mn3.x:.2f},{mn3.y:.2f},{mn3.z:.2f}) max=({mx3.x:.2f},{mx3.y:.2f},{mx3.z:.2f})")
-print(f"PLAN {mx3.x-mn3.x:.1f} x {mx3.y-mn3.y:.1f} m, height {mx3.z-mn3.z:.1f}")
+# ---- (centring happens on the joined mesh data below — root-location shifts
+# depend on each export's hierarchy/scale and silently no-op when they differ)
 
 # ---- join everything into one mesh (1 draw call), textures capped
 bpy.ops.object.select_all(action="DESELECT")
@@ -103,21 +93,39 @@ bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 import bmesh
 bm = bmesh.new(); bm.from_mesh(joined.data)
 bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
-                       plane_co=(0, 0, 2.6), plane_no=(0, 0, 1), clear_outer=True)
+                       plane_co=(0, 0, fz + 2.6), plane_no=(0, 0, 1), clear_outer=True)
 bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:],
-                       plane_co=(0, 0, -0.6), plane_no=(0, 0, 1), clear_inner=True)
+                       plane_co=(0, 0, fz - 0.6), plane_no=(0, 0, 1), clear_inner=True)
 bm.to_mesh(joined.data); bm.free()
 print(f"SLAB CUT -> tris now {len(joined.data.polygons)}")
+
+# diorama -> real-scale + centring, applied to the mesh DATA (data coords ==
+# world coords after transform_apply above — hierarchy-proof). The source's
+# proportions (1 m walls, 0.5 m desks) read miniature against a 1.75 m player;
+# 2x makes the office read right. ponytail: one knob — his feel pass tunes it.
+from mathutils import Matrix
+MODEL_SCALE = 1.5
+vs = [v.co for v in joined.data.vertices]
+mn3 = Vector((min(v.x for v in vs), min(v.y for v in vs), min(v.z for v in vs)))
+mx3 = Vector((max(v.x for v in vs), max(v.y for v in vs), max(v.z for v in vs)))
+joined.data.transform(Matrix.Translation(Vector((-(mn3.x + mx3.x) / 2, -(mn3.y + mx3.y) / 2, -fz))))
+joined.data.transform(Matrix.Scale(MODEL_SCALE, 4))
+vs = [v.co for v in joined.data.vertices]
+mn3 = Vector((min(v.x for v in vs), min(v.y for v in vs), min(v.z for v in vs)))
+mx3 = Vector((max(v.x for v in vs), max(v.y for v in vs), max(v.z for v in vs)))
+print(f"CENTRED + SCALED x{MODEL_SCALE} -> bbox x {mn3.x:.1f}..{mx3.x:.1f}  y {mn3.y:.1f}..{mx3.y:.1f}  z {mn3.z:.1f}..{mx3.z:.1f}")
 for img in bpy.data.images:
     if img.size[0] > 1024 or img.size[1] > 1024:
         s = 1024 / max(img.size[0], img.size[1])
         img.scale(int(img.size[0] * s), int(img.size[1] * s))
 print("TEXTURES capped at 1024")
 
-# ---- collision grid on the prepped model (rays down, fz now 0)
+# ---- collision grid on the prepped model (rays down, fz now 0).
+# 5 cm cells: the model's walls are thinner than any coarser step, and a
+# coarse grid turns them into dotted lines the merge leaves full of holes.
 bvh = build_bvh([joined])
-COLS = 96
-step = (mx3.x - mn3.x) / COLS
+step = 0.05
+COLS = int((mx3.x - mn3.x) / step)
 rows = max(1, int((mx3.y - mn3.y) / step))
 solid = floor = void = 0
 cells = []
@@ -127,7 +135,7 @@ for r in range(rows):
     for c in range(COLS):
         x = mn3.x + (c + 0.5) * step
         y = mn3.y + (r + 0.5) * step
-        hit = bvh.ray_cast(Vector((x, y, 6.0)), Vector((0, 0, -1)))
+        hit = bvh.ray_cast(Vector((x, y, mx3.z + 1.0)), Vector((0, 0, -1)))
         loc = hit[0]
         if loc is None:
             line += " "; crow.append(0); void += 1
@@ -136,7 +144,8 @@ for r in range(rows):
         else:
             line += "."; crow.append(1); floor += 1
     cells.append(crow)
-    print("  " + line)
+    if r % 8 == 0:  # coarse print — full grid is 600+ rows
+        print("  " + line[::4])
 print(f"GRID TOTALS floor={floor} solid={solid} void={void} step={step:.2f}")
 json.dump(
     {"x0": mn3.x, "y0": mn3.y, "step": step, "cols": COLS, "rows": rows, "cells": cells},

@@ -57,10 +57,12 @@ for (let r = 1; r < rows - 1; r++)
       for (let dc = -1; dc <= 1 && ok; dc++) if (cells[r + dr][c + dc] !== 1) ok = false;
     if (ok) open.push({ r, c });
   }
+// stride across the candidate list so picks span the whole plan, not one band
 const picks = [];
-for (const minD of [6, 4.5, 3]) {
-  for (const cell of open) {
-    if (picks.length >= 10) break;
+const stride = Math.max(1, Math.floor(open.length / 10));
+for (const minD of [0, 4.5, 3]) {
+  for (let k = 0; k < open.length && picks.length < 10; k += stride) {
+    const cell = open[k];
     const gxm = gx(cell.c), gzm = gz(cell.r);
     if (picks.every((p) => Math.hypot(gx(p.c) - gxm, gz(p.r) - gzm) >= minD)) picks.push(cell);
   }
