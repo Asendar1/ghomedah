@@ -1,5 +1,6 @@
 import * as three from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { Cabinet, Rect } from "@ghomedah/shared";
 import { samples, id, mapData, inputs, phase } from "./net";
@@ -151,6 +152,72 @@ export function startGame(canvas: HTMLCanvasElement) {
 		return hinge;
 	}
 
+	// one entry per animated panel (bookcase doors, or the fallback lid): lerp
+	// `axis` toward `open` while its cabinet is searched, back to 0 when reset
+	const openables: { node: three.Object3D; axis: "x" | "y"; open: number; cab: Cabinet }[] = [];
+
+	// walls: tile the 2 m modular panel along the rect, one exact segment scale
+	// per run (no stretch slop accumulates). Model still loading → the old box.
+	function addWall(r: Rect) {
+		// chunky rects (the centre pillar) are solids, not wall runs — keep the box
+		if (props.wall === null || Math.min(r.w, r.h) * SCALE > 1) {
+			addBox(r, 2.5, wallMat);
+			return;
+		}
+		const horizontal = r.w >= r.h;
+		const len = (horizontal ? r.w : r.h) * SCALE;
+		const n = Math.max(1, Math.round(len / 2));
+		const seg = len / n;
+		const c = toWorld(r.x + r.w / 2, r.y + r.h / 2);
+		for (let i = 0; i < n; i++) {
+			const m = props.wall.clone();
+			m.traverse((o) => {
+				const mesh = o as three.Mesh;
+				if (mesh.isMesh) {
+					mesh.material = wallMat;
+					mesh.castShadow = true;
+					mesh.receiveShadow = true;
+				}
+			});
+			const off = -len / 2 + seg * (i + 0.5);
+			m.rotation.y = horizontal ? Math.PI / 2 : 0; // the panel's long axis is local z
+			m.scale.set(1, 2.5 / 2.4, seg / 2);
+			m.position.set(c.x + (horizontal ? off : 0), 0, c.z + (horizontal ? 0 : off));
+			scene.add(m);
+		}
+	}
+
+	// cabinets: a row of three door-bookcases inside the old rect footprint —
+	// the hitbox keeps its size, the furniture becomes real. Search swings all
+	// six doors (pivots already sit on the hinges). Model missing → box + lid.
+	function addCabinet(r: Cabinet) {
+		const c = toWorld(r.x + r.w / 2, r.y + r.h / 2);
+		if (props.bookcase === null) {
+			addBox(r, 1.1, cabinetMat);
+			openables.push({ node: addLid(r), axis: "x", open: -1.45, cab: r });
+			return;
+		}
+		const k = 1.15 / 0.85; // stand as tall as the old cabinet looked
+		const slot = (r.w * SCALE) / 3;
+		for (let i = -1; i <= 1; i++) {
+			const u = props.bookcase.clone();
+			u.scale.setScalar(k);
+			u.position.set(c.x + i * slot, 0, c.z);
+			u.traverse((o) => {
+				const mesh = o as three.Mesh;
+				if (mesh.isMesh) {
+					mesh.material = /door/i.test(o.name) ? lidMat : cabinetMat;
+					mesh.castShadow = true;
+				}
+			});
+			const dl = u.getObjectByName("doorLeft");
+			const dr = u.getObjectByName("doorRight");
+			if (dl) openables.push({ node: dl, axis: "y", open: -1.9, cab: r });
+			if (dr) openables.push({ node: dr, axis: "y", open: 1.9, cab: r });
+			scene.add(u);
+		}
+	}
+
 	// a blocky office figure: torso + shoulders + head. Role color goes on
 	// torso+head. No facing detail — remote players have no facing on the wire.
 	const torsoGeo = new three.BoxGeometry(0.95, 1.05, 0.62);
@@ -196,6 +263,23 @@ export function startGame(canvas: HTMLCanvasElement) {
 				charProto = proto;
 			})
 			.catch((err) => console.error("character model failed to load — blockout stays", err));
+	}
+
+	// office props: modular wall panels + door-bookcases for the cabinets.
+	// Blender-authorable contract: export .glb at real-world METERS, base at
+	// the origin, and name any animatable parts ("doorLeft"/"doorRight" here) —
+	// we find them BY NODE NAME at load. Drop a replacement at the same path
+	// (or hand me one and I'll point the loader at it) and it just appears.
+	const props: { wall: three.Group | null; bookcase: three.Group | null } = { wall: null, bookcase: null };
+	let propsReady = false;
+	{
+		const gl = new GLTFLoader();
+		const loadGlb = (url: string) => new Promise<three.Group>((res, rej) => gl.load(url, (g) => res(g.scene), undefined, rej));
+		void Promise.allSettled([loadGlb("/models/props/wall.glb"), loadGlb("/models/props/bookcase.glb")]).then(([w, b]) => {
+			if (w.status === "fulfilled") props.wall = w.value;
+			if (b.status === "fulfilled") props.bookcase = b.value;
+			propsReady = true; // even on failure — the map always builds, boxes stand in
+		});
 	}
 
 	// the loaded model lands in a group that may still hold blockout boxes: once,
@@ -249,8 +333,6 @@ export function startGame(canvas: HTMLCanvasElement) {
 		return g;
 	}
 
-	let cabinets: Cabinet[] = [];
-	const lids: three.Group[] = [];
 	let searchBoxes: Rect[] = [];
 	let searchMs = 2000; // overwritten by md.searchTime once the map arrives
 	let searchT = 0; // local meter fill; server truth lands as boxSearched
@@ -260,26 +342,22 @@ export function startGame(canvas: HTMLCanvasElement) {
 		const dt = Math.min(time - lastFrame, 100);
 		lastFrame = time;
 
-		if (mapData && !builtMap) {
+		if (mapData && !builtMap && propsReady) {
 			builtMap = true;
 			const md = mapData;
-			for (const r of md.walls) addBox(r, 2.5, wallMat);
-			for (const r of md.cabinets) {
-				addBox(r, 1.1, cabinetMat);
-				lids.push(addLid(r));
-			}
-			cabinets = md.cabinets;
+			for (const r of md.walls) addWall(r);
+			for (const r of md.cabinets) addCabinet(r);
 			searchBoxes = md.cabinets.map((c) => inflate(c, md.searchRange));
 			searchMs = md.searchTime;
 			const c0 = md.cabinets[0]; // all cabinets share size
 			if (c0) outline.scale.set(c0.w * SCALE, 1.1, c0.h * SCALE);
 		}
 
-		// searched cabinets pop their lid open (driven by the server flag)
+		// searched cabinets swing their doors open (driven by the server flag)
 		const k = Math.min(1, dt * 0.01);
-		for (let i = 0; i < lids.length; i++) {
-			const target = cabinets[i].search ? -1.45 : 0;
-			lids[i].rotation.x += (target - lids[i].rotation.x) * k;
+		for (const o of openables) {
+			const target = o.cab.search ? o.open : 0;
+			o.node.rotation[o.axis] += (target - o.node.rotation[o.axis]) * k;
 		}
 
 		// the lights die when the poison is found — and come back at the reset.
