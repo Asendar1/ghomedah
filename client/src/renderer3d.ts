@@ -297,16 +297,15 @@ export function startGame(canvas: HTMLCanvasElement) {
 			if (w.status === "fulfilled") props.wall = w.value;
 			if (bk.status === "fulfilled") props.bookcase = bk.value;
 			if (o.status === "fulfilled") {
-				// the hand-modelled office draws exactly as exported; its floor
-				// replaces the built-in plane. Hitboxes stay the server rects —
-				// a model never touches collision.
+				// the office model IS the level: its walls are the visual, the
+				// server rects are the collision — never tile Kenney panels over it
+				officeHas.walls = true;
 				o.value.traverse((n) => {
 					const m = n as three.Mesh;
 					if (m.isMesh) {
 						m.receiveShadow = true;
 						m.castShadow = true;
 					}
-					if (/^wall/.test(n.name)) officeHas.walls = true;
 					if (/^cabinet/.test(n.name)) officeHas.cabinets = true;
 					const cm = /^cabinet_(\d+)/.exec(n.name);
 					if (cm) {
