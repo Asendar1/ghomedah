@@ -41,19 +41,39 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// vision — client-only knobs, zero netcode. Lights need lit materials, so
 	// everything is Lambert now (matte, still the flat blockout look).
 	const VISION = {
-		// the room's own light, by phase (tune by feel): SEARCH is the office lit
-		// up like daytime — neutral fluorescent, flat, everything readable. The
-		// moment the poison is found the lights die to near-pitch-black and the
-		// flashlights are the only light there is. (hunt was calibrated against
-		// the old navy tint × its SxS intensity — with white light it needs this
-		// much smaller a number to land on the same darkness.)
-		ambient: { color: 0xe8ecf5, search: 3.2, hunt: 0.0022 }, // ÷π: three's physical lighting — 3.2 lands the floor on its own albedo
+		// the room's own light, by phase (tune by feel): SEARCH is the office with
+		// the ceiling lights on — a dim neutral base plus six pools from above
+		// (CEIL_* below) so it reads as LIT, not just bright. The moment the
+		// poison is found the ceiling lights and the base die together to
+		// near-pitch-black and the flashlights are the only light there is.
+		// (hunt is calibrated against white light: radiance = albedo × color × intensity / π.)
+		ambient: { color: 0xe8ecf5, search: 1.1, hunt: 0.0022 },
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // hider camera height/offset scale
 		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
 	};
 	const ambient = new three.AmbientLight(VISION.ambient.color, VISION.ambient.search);
 	scene.add(ambient);
+	// ceiling lights — the office reads as lit BY lights: six soft pools from
+	// above with dimmer zones between. No shadow maps (flat pools don't need
+	// them and six more shadow sources isn't free). Phase-managed with the
+	// ambient: all the way off the moment the hunt starts.
+	const CEIL_I = 55; // candela at the fixture — tune by eye
+	const ceilLights = [
+		[-7, -7],
+		[0, -7],
+		[7, -7],
+		[-7, 7],
+		[0, 7],
+		[7, 7],
+	].map(([x, z]) => {
+		const l = new three.SpotLight(0xfff3e0, CEIL_I, 22, 0.65, 0.55, 1.7);
+		l.position.set(x, 6, z);
+		l.target.position.set(x, 0, z);
+		scene.add(l, l.target);
+		return l;
+	});
+	let ceilK = 1; // 1 = search (on), 0 = hunt (dead) — lerped per frame
 	// one flashlight factory: mine + one per other player (their beams are real lights)
 	const mkFlashlight = (mapSize: number, dist: number) => {
 		const l = new three.SpotLight(VISION.cone.color, VISION.cone.intensity, dist, VISION.cone.angle, 0.45, 1.2);
@@ -289,6 +309,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 		// Sampled live each frame; the lerp reads as the lights going out.
 		const ambTarget = phase && phase.phase !== "SEARCH" ? VISION.ambient.hunt : VISION.ambient.search;
 		ambient.intensity += (ambTarget - ambient.intensity) * k;
+		ceilK += ((phase && phase.phase !== "SEARCH" ? 0 : 1) - ceilK) * k;
+		for (const l of ceilLights) l.intensity = CEIL_I * ceilK;
 
 		if (samples.length) {
 			const render_at = performance.now() - INTERP_MS;
