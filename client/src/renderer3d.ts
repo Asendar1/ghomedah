@@ -44,7 +44,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 		// the room's own light, by phase (tune by feel): dim enough to search in,
 		// then near-pitch-black from the moment the poison is found — after that
 		// the flashlights are the only light there is
-		ambient: { color: 0x2a2d45, search: 0.9, hunt: 0.07 },
+		ambient: { color: 0x2a2d45, search: 6.0, hunt: 0.07 },
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // hider camera height/offset scale
 		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
