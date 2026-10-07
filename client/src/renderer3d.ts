@@ -45,10 +45,13 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// vision — client-only knobs, zero netcode. Lights need lit materials, so
 	// everything is Lambert now (matte, still the flat blockout look).
 	const VISION = {
-		// the room's own light, by phase (tune by feel): dim enough to search in,
-		// then near-pitch-black from the moment the poison is found — after that
-		// the flashlights are the only light there is
-		ambient: { color: 0x2a2d45, search: 0.9, hunt: 0.07 },
+		// the room's own light, by phase: SEARCH is the office LIT — flat neutral
+		// ambience (the Escapists-style reference), everything readable. The
+		// moment the poison is found the lights die to near-pitch-black and the
+		// flashlights are the only light there is. (÷π: three's physical
+		// lighting — 3.2 lands surfaces on their own albedo; hunt 0.0022 was
+		// measured pitch black with this white.)
+		ambient: { color: 0xe8ecf5, search: 3.2, hunt: 0.0022 },
 		cone: { color: 0xfff3d6, intensity: 3.2, dist: 30, angle: 0.45 }, // flashlight
 		followScale: 0.35, // hider camera height/offset scale
 		seekerScale: 0.45, // the seeker's only edge: ~28% wider lens, not the whole map
@@ -78,7 +81,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const enemyMat = new three.MeshLambertMaterial({ color: "#fafa00" });
 	const hunterMat = new three.MeshLambertMaterial({ color: "#ff2e2e" });
 	const zombieMat = new three.MeshLambertMaterial({ color: "#3dff6e" });
-	const wallMat = new three.MeshLambertMaterial({ color: "#2c2c34" });
+	const wallMat = new three.MeshLambertMaterial({ color: "#b4b8c2" }); // light partitions — the search phase is lit now
 	const cabinetMat = new three.MeshLambertMaterial({ color: "#5a5a62" });
 	const lidMat = new three.MeshLambertMaterial({ color: "#6e6e76" });
 	const outlineMaterial = new three.MeshBasicMaterial({
