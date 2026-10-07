@@ -31,6 +31,7 @@ Dev loop: `node --watch server/server.ts` + `cd client && npm run dev` (vite ser
 - **Phases**: SEARCH → HUNT (90 s) → END (10 s) → auto-reset, all room state. One poison cabinet is planted per round; the round counter and per-player scores live in room state, and the reset broadcasts `newRound` so clients refresh their cabinet visuals (lids close, search outlines return).
 - **Interactions**: search is a held bit (a state); attack is a `{type:"attack"}` event (a tap must not fall between ticks). Both are queued by handlers and resolved only inside the tick.
 - **Role vision** is pure client rendering — one ambient level for the whole room (dim during SEARCH, near-black during HUNT) plus a spotlight cone per player aimed by their movement; the hunter's only edge is a ~28% wider camera. The **F** flashlight toggle is one display-only bit relayed input → snapshot (`lit`) — no game logic reads it.
+- **Characters** are CC0 low-poly models (Kenney, *Animated Characters 3*): one FBX rig + its idle/run takes (`client/public/models/`), loaded once via three's `FBXLoader`; each player gets a skinned clone with a flat role-color material, walk/idle blended by movement weight, facing derived from motion. The ghost echo reuses the same model, frozen mid-stride and emissive. Gotcha kept in the code: each Kenney animation FBX ships a 1-frame “Targeting Pose” take — clips are picked by name, never by index (index 0 is a 42 ms stub that silently pins every limb).
 
 ## Engineering notes
 
@@ -62,4 +63,4 @@ No test framework — six runnable probes instead:
 
 ## Next
 
-Post-launch: room menu / create-join UI, animation, sound (SFX/ambience only), a SEARCH-phase deadline for AFK rooms, reconnection.
+Post-launch: room menu / create-join UI, office props/models, sound (SFX/ambience only), a SEARCH-phase deadline for AFK rooms, reconnection.

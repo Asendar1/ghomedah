@@ -1,4 +1,6 @@
 import * as three from "three";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { Cabinet, Rect } from "@ghomedah/shared";
 import { samples, id, mapData, inputs, phase } from "./net";
 import { contains, inflate } from "@ghomedah/shared/geometry";
@@ -165,13 +167,73 @@ export function startGame(canvas: HTMLCanvasElement) {
 		const head = new three.Mesh(headGeo, playerMat);
 		head.position.y = 1.5;
 		g.add(body, collar, head);
-		if (self) {
-			const ol = new three.Mesh(torsoGeo, outlineMaterial);
-			ol.scale.setScalar(1.08);
-			body.add(ol);
-		}
-		g.userData.parts = [body, head];
+		g.userData.mat = self ? playerMat : enemyMat;
 		return g;
+	}
+
+	// CC0 character (Kenney, Animated Characters 3): an FBX rig + separate
+	// idle/run clips, loaded once. Every player gets a skinned clone and a flat
+	// role color replaces the skin texture — the tint is the tell, not the face.
+	const CHAR_H = 1.75; // world units — the figure stands this tall (tune by eye)
+	const MODEL_YAW = 0; // if walking reads backwards, flip to Math.PI
+	let charProto: three.Group | null = null;
+	let idleClip: three.AnimationClip | null = null;
+	let runClip: three.AnimationClip | null = null;
+	{
+		const fbx = new FBXLoader();
+		const loadFbx = (url: string) => new Promise<three.Group>((res, rej) => fbx.load(url, res, undefined, rej));
+		void Promise.all([loadFbx("/models/character.fbx"), loadFbx("/models/idle.fbx"), loadFbx("/models/run.fbx")])
+			.then(([proto, idle, run]) => {
+				// each Kenney FBX ships TWO takes: a 1-frame "Targeting Pose" and
+				// the real cycle — pick by name, not by index (index 0 is the stub
+				// in run.fbx and a 42 ms clip silently pins every limb)
+				const pick = (clips: three.AnimationClip[], re: RegExp) =>
+					clips.find((c) => re.test(c.name)) ?? clips.reduce((a, b) => (b.duration > a.duration ? b : a));
+				idleClip = pick(idle.animations, /idle/i);
+				runClip = pick(run.animations, /run/i);
+				const h = new three.Box3().setFromObject(proto).getSize(new three.Vector3()).y || 1;
+				proto.scale.setScalar(CHAR_H / h); // normalize whatever unit the pack ships
+				charProto = proto;
+			})
+			.catch((err) => console.error("character model failed to load — blockout stays", err));
+	}
+
+	// the loaded model lands in a group that may still hold blockout boxes: once,
+	// clear them and swap in the clone. freeze = the ghost echo, posed mid-stride
+	// (a T-pose echo would read wrong) and left static.
+	function dressModel(g: three.Group, mat: three.Material, freeze = false) {
+		if (charProto === null || g.userData.modeled) return;
+		g.userData.modeled = true;
+		g.clear();
+		const model = cloneSkinned(charProto);
+		model.traverse((o) => {
+			if ((o as three.Mesh).isMesh) {
+				(o as three.Mesh).material = mat;
+				(o as three.Mesh).frustumCulled = false; // skinned bounds lie when posed
+				o.castShadow = true;
+			}
+		});
+		g.add(model);
+		g.userData.mat = mat;
+		if (freeze) {
+			if (runClip) {
+				const m = new three.AnimationMixer(model);
+				m.clipAction(runClip).play();
+				m.update(0.25);
+			}
+			return;
+		}
+		if (idleClip || runClip) {
+			const mixer = new three.AnimationMixer(model);
+			const idle = mixer.clipAction((idleClip ?? runClip) as three.AnimationClip);
+			idle.play();
+			const run = idleClip && runClip ? mixer.clipAction(runClip) : null;
+			if (run) {
+				run.play();
+				run.weight = 0;
+			}
+			g.userData.anim = { mixer, idle, run, w: 0 };
+		}
 	}
 
 	// the ghost echo: a glowing copy of a hiding prey — emissive, so it reads in
@@ -258,7 +320,13 @@ export function startGame(canvas: HTMLCanvasElement) {
 				mesh.position.set(w.x, 0, w.z);
 				const roleMat =
 					p.role === "hunter" ? hunterMat : p.role === "zombie" ? zombieMat : p.id === id ? playerMat : enemyMat;
-				for (const part of mesh.userData.parts as three.Mesh[]) part.material = roleMat;
+				if (mesh.userData.mat !== roleMat) {
+					mesh.userData.mat = roleMat;
+					mesh.traverse((o) => {
+						if ((o as three.Mesh).isMesh) (o as three.Mesh).material = roleMat;
+					});
+				}
+				dressModel(mesh, roleMat); // no-op until the model loads (and after)
 
 				// facing from movement — every client derives it identically, so a
 				// beam's aim needs no wire field and reads synced
@@ -267,7 +335,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 					f = { lx: w.x, lz: w.z, fx: 0, fz: 1 };
 					faces.set(p.id, f);
 				}
-				if (Math.hypot(w.x - f.lx, w.z - f.lz) > 0.02) {
+				const moved = Math.hypot(w.x - f.lx, w.z - f.lz);
+				if (moved > 0.02) {
 					f.fx = w.x - f.lx;
 					f.fz = w.z - f.lz;
 					const fl = Math.hypot(f.fx, f.fz);
@@ -277,6 +346,17 @@ export function startGame(canvas: HTMLCanvasElement) {
 				f.lx = w.x;
 				f.lz = w.z;
 
+				// the model faces where it walks and runs only while moving
+				mesh.rotation.y = Math.atan2(f.fx, f.fz) + MODEL_YAW;
+				const anim = mesh.userData.anim as
+					| { mixer: three.AnimationMixer; idle: three.AnimationAction; run: three.AnimationAction | null; w: number }
+					| undefined;
+				if (anim) {
+					anim.w += ((moved > 0.01 ? 1 : 0) - anim.w) * Math.min(1, dt * 0.012);
+					if (anim.run) anim.run.weight = anim.w;
+					anim.idle.weight = 1 - anim.w;
+					anim.mixer.update(dt / 1000);
+				}
 				// EVERY player carries a real flashlight — including the seeker. A
 				// beam is a giveaway: it sweeps the dark where everyone can see it
 				let beam = playerCones.get(p.id);
@@ -295,6 +375,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 					scene.add(ghostMesh);
 					ghostMap.set(p.id, ghostMesh);
 				}
+				dressModel(ghostMesh, ghostMat, true);
 				if (p.ghost) {
 					const gw = toWorld(p.ghost.x, p.ghost.y);
 					ghostMesh.position.set(gw.x, 0, gw.z);
