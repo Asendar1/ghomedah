@@ -41,51 +41,107 @@ export const INFECT_COOLDOWN = 1500;
 // Max players per room.
 export const MAX_PLAYERS = 8;
 
-// Where fresh players spawn (px) — hand-set to the office floor. The re-roll
+// Where fresh players spawn (px) — the assembly hall's floor. The re-roll
 // loop still keeps them out of solids, so this only needs to be the room.
-export const SPAWN_BOUNDS = { x: 187, y: 300, w: 414, h: 252 };
+export const SPAWN_BOUNDS = { x: 600, y: 813, w: 667, h: 560 };
 
 // The play area in game pixels. The px grid is FIXED (1 px = 3.75 cm — speeds,
 // reach and collision are all in these units); a bigger office = a bigger
 // number here + new MAP rects inside it. The client centres the world on
 // size / 2, and it rides the map msg so nothing drifts.
-export const MAP_SIZE = 800;
+export const MAP_SIZE = 1760;
 
 // The office. Single source of truth for shape: the server collides with these
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
+// The facility. Single source of truth for shape: the server collides with
+// these rects, the client draws boxes from them. Auto-generated from
+// office.glb by map/glb-to-map.cjs — rerun that after every Blender edit.
 export const MAP = {
 	walls: [
-		// the hand-modelled office (office.glb) — rects generated from its
-		// wall* node bounding boxes (world m / 0.0375 + 400). The model is the
-		// visual; these rects are the collision. One rect per straight run.
-		{ x: 286, y: 255, w: 107, h: 40 }, // wall.001
-		{ x: 180, y: 255, w: 107, h: 40 }, // wall.002
-		{ x: 423, y: 253, w: 108, h: 43 }, // wall.003
-		{ x: 530, y: 255, w: 107, h: 40 }, // wall.004
-		{ x: 140, y: 255, w: 40, h: 107 }, // wall.005
-		{ x: 140, y: 423, w: 40, h: 106 }, // wall.006
-		{ x: 180, y: 558, w: 107, h: 40 }, // wall.007
-		{ x: 285, y: 558, w: 107, h: 40 }, // wall.008
-		{ x: 426, y: 558, w: 107, h: 40 }, // wall.009
-		{ x: 531, y: 558, w: 107, h: 40 }, // wall.010
-		{ x: 606, y: 452, w: 40, h: 107 }, // wall.011
-		{ x: 606, y: 292, w: 40, h: 106 }, // wall.012
-		{ x: 353, y: 195, w: 40, h: 84 }, // wall.013
-		{ x: 424, y: 195, w: 40, h: 84 }, // wall.014
-		{ x: 552, y: 195, w: 76, h: 84 }, // wall.015
-		{ x: 491, y: 195, w: 84, h: 9 }, // wall.016
-		// (the export still carries the old 4x4 test wall parked at py -105 —
-		// beyond the arena, so no rect: delete it in Blender)
+		{ x: 80, y: 7, w: 1600, h: 40 },
+		{ x: 27, y: 60, w: 107, h: 40 },
+		{ x: 560, y: 60, w: 213, h: 40 },
+		{ x: 987, y: 60, w: 107, h: 40 },
+		{ x: 1627, y: 60, w: 107, h: 40 },
+		{ x: 27, y: 167, w: 107, h: 40 },
+		{ x: 667, y: 167, w: 107, h: 40 },
+		{ x: 1627, y: 167, w: 107, h: 40 },
+		{ x: 27, y: 273, w: 107, h: 40 },
+		{ x: 667, y: 273, w: 107, h: 40 },
+		{ x: 1627, y: 273, w: 107, h: 40 },
+		{ x: 27, y: 380, w: 107, h: 40 },
+		{ x: 560, y: 380, w: 213, h: 40 },
+		{ x: 987, y: 380, w: 107, h: 40 },
+		{ x: 1627, y: 380, w: 107, h: 40 },
+		{ x: 720, y: 433, w: 107, h: 40 },
+		{ x: 933, y: 433, w: 107, h: 40 },
+		{ x: 27, y: 487, w: 107, h: 40 },
+		{ x: 560, y: 487, w: 107, h: 40 },
+		{ x: 987, y: 487, w: 107, h: 40 },
+		{ x: 1627, y: 487, w: 107, h: 40 },
+		{ x: 27, y: 593, w: 107, h: 40 },
+		{ x: 560, y: 593, w: 107, h: 40 },
+		{ x: 987, y: 593, w: 107, h: 40 },
+		{ x: 1627, y: 593, w: 107, h: 40 },
+		{ x: 80, y: 647, w: 427, h: 40 },
+		{ x: 613, y: 647, w: 107, h: 40 },
+		{ x: 933, y: 647, w: 107, h: 40 },
+		{ x: 1147, y: 647, w: 533, h: 40 },
+		{ x: 453, y: 700, w: 107, h: 40 },
+		{ x: 1200, y: 700, w: 107, h: 40 },
+		{ x: 453, y: 807, w: 107, h: 40 },
+		{ x: 1200, y: 807, w: 107, h: 40 },
+		{ x: 453, y: 913, w: 107, h: 40 },
+		{ x: 1200, y: 913, w: 107, h: 40 },
+		{ x: 80, y: 967, w: 427, h: 40 },
+		{ x: 27, y: 1020, w: 107, h: 40 },
+		{ x: 1200, y: 1020, w: 107, h: 40 },
+		{ x: 27, y: 1127, w: 107, h: 40 },
+		{ x: 240, y: 1127, w: 107, h: 40 },
+		{ x: 453, y: 1127, w: 107, h: 40 },
+		{ x: 1200, y: 1127, w: 107, h: 40 },
+		{ x: 80, y: 1180, w: 213, h: 40 },
+		{ x: 400, y: 1180, w: 107, h: 40 },
+		{ x: 27, y: 1233, w: 107, h: 40 },
+		{ x: 453, y: 1233, w: 107, h: 40 },
+		{ x: 1200, y: 1233, w: 107, h: 40 },
+		{ x: 507, y: 1287, w: 320, h: 40 },
+		{ x: 1040, y: 1287, w: 640, h: 40 },
+		{ x: 27, y: 1340, w: 107, h: 40 },
+		{ x: 240, y: 1340, w: 107, h: 40 },
+		{ x: 453, y: 1340, w: 107, h: 40 },
+		{ x: 667, y: 1340, w: 107, h: 40 },
+		{ x: 1627, y: 1340, w: 107, h: 40 },
+		{ x: 27, y: 1447, w: 107, h: 40 },
+		{ x: 240, y: 1447, w: 107, h: 40 },
+		{ x: 453, y: 1447, w: 107, h: 40 },
+		{ x: 667, y: 1447, w: 107, h: 40 },
+		{ x: 1627, y: 1447, w: 107, h: 40 },
+		{ x: 80, y: 1500, w: 213, h: 40 },
+		{ x: 400, y: 1500, w: 107, h: 40 },
+		{ x: 27, y: 1553, w: 107, h: 40 },
+		{ x: 453, y: 1553, w: 107, h: 40 },
+		{ x: 667, y: 1553, w: 107, h: 40 },
+		{ x: 1627, y: 1553, w: 107, h: 40 },
+		{ x: 27, y: 1660, w: 107, h: 40 },
+		{ x: 240, y: 1660, w: 107, h: 40 },
+		{ x: 453, y: 1660, w: 107, h: 40 },
+		{ x: 667, y: 1660, w: 107, h: 40 },
+		{ x: 1627, y: 1660, w: 107, h: 40 },
+		{ x: 80, y: 1713, w: 427, h: 40 },
+		{ x: 720, y: 1713, w: 960, h: 40 },
 	] satisfies Rect[],
 	cabinets: [
-		{ x: 80, y: 80, w: 56, h: 44, id: 1, search: false },
-		{ x: 320, y: 120, w: 56, h: 44, id: 2, search: false },
-		{ x: 600, y: 120, w: 56, h: 44, id: 3, search: false },
-		{ x: 80, y: 320, w: 56, h: 44, id: 4, search: false },
-		{ x: 90, y: 620, w: 56, h: 44, id: 5, search: false },
-		{ x: 480, y: 620, w: 56, h: 44, id: 6, search: false },
-		{ x: 300, y: 680, w: 56, h: 44, id: 7, search: false },
-		{ x: 640, y: 680, w: 56, h: 44, id: 8, search: false },
+		{ x: 407, y: 599, w: 38, h: 29, id: 1, search: false },
+		{ x: 834, y: 385, w: 38, h: 29, id: 2, search: false },
+		{ x: 1335, y: 492, w: 49, h: 29, id: 3, search: false },
+		{ x: 1549, y: 172, w: 49, h: 29, id: 4, search: false },
+		{ x: 541, y: 919, w: 38, h: 29, id: 5, search: false },
+		{ x: 962, y: 812, w: 49, h: 29, id: 6, search: false },
+		{ x: 167, y: 1025, w: 38, h: 29, id: 7, search: false },
+		{ x: 375, y: 1319, w: 49, h: 29, id: 8, search: false },
+		{ x: 1282, y: 1372, w: 49, h: 29, id: 9, search: false },
+		{ x: 1442, y: 1612, w: 49, h: 29, id: 10, search: false },
 	] satisfies Cabinet[],
 };
 

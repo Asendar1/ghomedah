@@ -161,6 +161,9 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// one entry per animated panel (bookcase doors, or the fallback lid): lerp
 	// `axis` toward `open` while its cabinet is searched, back to 0 when reset
 	const openables: { node: three.Object3D; axis: "x" | "y"; open: number; cab: Cabinet }[] = [];
+	// lids that came with office.glb, keyed by cabinet id (bound when the map
+	// message arrives — both sides of the race are covered by propsReady)
+	const glbDoor = new Map<number, three.Object3D>();
 
 	// walls: tile the 2 m modular panel along the rect, one exact segment scale
 	// per run (no stretch slop accumulates). Model still loading → the old box.
@@ -199,6 +202,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// the hitbox keeps its size, the furniture becomes real. Search swings all
 	// six doors (pivots already sit on the hinges). Model missing → box + lid.
 	function addCabinet(r: Cabinet) {
+		// the model brought its own chests (their lids bind further down)
+		if (officeHas.cabinets) return;
 		const c = toWorld(r.x + r.w / 2, r.y + r.h / 2);
 		if (props.bookcase === null) {
 			addBox(r, 1.1, cabinetMat);
@@ -303,6 +308,12 @@ export function startGame(canvas: HTMLCanvasElement) {
 					}
 					if (/^wall/.test(n.name)) officeHas.walls = true;
 					if (/^cabinet/.test(n.name)) officeHas.cabinets = true;
+					const cm = /^cabinet_(\d+)/.exec(n.name);
+					if (cm) {
+						n.traverse((c) => {
+							if (/^door/i.test(c.name)) glbDoor.set(Number(cm[1]), c);
+						});
+					}
 				});
 				scene.add(o.value);
 				plane.visible = false;
@@ -377,6 +388,11 @@ export function startGame(canvas: HTMLCanvasElement) {
 			half = md.size / 2;
 			for (const r of md.walls) addWall(r);
 			for (const r of md.cabinets) addCabinet(r);
+			// the model's own lids: swing open on search, keyed by cabinet id
+			for (const r of md.cabinets) {
+				const d = glbDoor.get(r.id);
+				if (d) openables.push({ node: d, axis: "x", open: -2.2, cab: r });
+			}
 			searchBoxes = md.cabinets.map((c) => inflate(c, md.searchRange));
 			searchMs = md.searchTime;
 			const c0 = md.cabinets[0]; // all cabinets share size
