@@ -24,8 +24,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	const scene = new three.Scene();
 	scene.background = new three.Color("#040355");
 
-	const camera = new three.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
-	camera.position.set(0, 25, 15); // wide default; the per-frame camera block takes over
+	const camera = new three.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 800);
+	camera.position.set(0, 32, 10); // wide default; the per-frame camera block takes over
 	camera.lookAt(0, 0, 0);
 
 	const renderer = new three.WebGLRenderer({ canvas });
@@ -573,7 +573,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 			// seem to push the camera mid-map). The seeker just gets a wider lens.
 			const k = camera.aspect < 0.9 ? 0.9 / camera.aspect : 1;
 			const s = camScale * k;
-			camera.position.set(selfX, 25 * s, selfZ + 15 * s);
+			camera.position.set(selfX, 32 * s, selfZ + 10 * s);
 			camera.lookAt(selfX, 0.5, selfZ);
 		}
 
