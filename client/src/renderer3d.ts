@@ -162,6 +162,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// walls: tile the 2 m modular panel along the rect, one exact segment scale
 	// per run (no stretch slop accumulates). Model still loading → the old box.
 	function addWall(r: Rect) {
+		// the hand-modelled office IS the walls (its rects still collide server-side)
+		if (officeHas.walls) return;
 		// chunky rects (the centre pillar) are solids, not wall runs — keep the box
 		if (props.wall === null || Math.min(r.w, r.h) * SCALE > 1) {
 			addBox(r, 2.5, wallMat);
@@ -274,6 +276,7 @@ export function startGame(canvas: HTMLCanvasElement) {
 	// we find them BY NODE NAME at load. Drop a replacement at the same path
 	// (or hand me one and I'll point the loader at it) and it just appears.
 	const props: { wall: three.Group | null; bookcase: three.Group | null } = { wall: null, bookcase: null };
+	const officeHas = { walls: false, cabinets: false }; // office.glb brought its own
 	let propsReady = false;
 	{
 		const gl = new GLTFLoader();
@@ -295,6 +298,8 @@ export function startGame(canvas: HTMLCanvasElement) {
 						m.receiveShadow = true;
 						m.castShadow = true;
 					}
+					if (/^wall/.test(n.name)) officeHas.walls = true;
+					if (/^cabinet/.test(n.name)) officeHas.cabinets = true;
 				});
 				scene.add(o.value);
 				plane.visible = false;

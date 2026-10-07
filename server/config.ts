@@ -41,6 +41,10 @@ export const INFECT_COOLDOWN = 1500;
 // Max players per room.
 export const MAX_PLAYERS = 8;
 
+// Where fresh players spawn (px) — hand-set to the office floor. The re-roll
+// loop still keeps them out of solids, so this only needs to be the room.
+export const SPAWN_BOUNDS = { x: 187, y: 300, w: 414, h: 252 };
+
 // The play area in game pixels. The px grid is FIXED (1 px = 3.75 cm — speeds,
 // reach and collision are all in these units); a bigger office = a bigger
 // number here + new MAP rects inside it. The client centres the world on
@@ -51,20 +55,27 @@ export const MAP_SIZE = 800;
 // rects, the client draws boxes from them. Blockout v1 — nudge by eye.
 export const MAP = {
 	walls: [
-		// border
-		{ x: 0, y: 0, w: 800, h: 24 },
-		{ x: 0, y: 776, w: 800, h: 24 },
-		{ x: 0, y: 0, w: 24, h: 800 },
-		{ x: 776, y: 0, w: 24, h: 800 },
-		// left divider — doorway between the two segments
-		{ x: 200, y: 24, w: 24, h: 280 },
-		{ x: 200, y: 460, w: 24, h: 316 },
-		// right divider — pass around its left end
-		{ x: 520, y: 280, w: 256, h: 24 },
-		// lower-right partial wall
-		{ x: 560, y: 540, w: 216, h: 24 },
-		// center pillar
-		{ x: 360, y: 360, w: 80, h: 80 },
+		// the hand-modelled office (office.glb) — rects generated from its
+		// wall* node bounding boxes (world m / 0.0375 + 400). The model is the
+		// visual; these rects are the collision. One rect per straight run.
+		{ x: 286, y: 255, w: 107, h: 40 }, // wall.001
+		{ x: 180, y: 255, w: 107, h: 40 }, // wall.002
+		{ x: 423, y: 253, w: 108, h: 43 }, // wall.003
+		{ x: 530, y: 255, w: 107, h: 40 }, // wall.004
+		{ x: 140, y: 255, w: 40, h: 107 }, // wall.005
+		{ x: 140, y: 423, w: 40, h: 106 }, // wall.006
+		{ x: 180, y: 558, w: 107, h: 40 }, // wall.007
+		{ x: 285, y: 558, w: 107, h: 40 }, // wall.008
+		{ x: 426, y: 558, w: 107, h: 40 }, // wall.009
+		{ x: 531, y: 558, w: 107, h: 40 }, // wall.010
+		{ x: 606, y: 452, w: 40, h: 107 }, // wall.011
+		{ x: 606, y: 292, w: 40, h: 106 }, // wall.012
+		{ x: 353, y: 195, w: 40, h: 84 }, // wall.013
+		{ x: 424, y: 195, w: 40, h: 84 }, // wall.014
+		{ x: 552, y: 195, w: 76, h: 84 }, // wall.015
+		{ x: 491, y: 195, w: 84, h: 9 }, // wall.016
+		// (the export still carries the old 4x4 test wall parked at py -105 —
+		// beyond the arena, so no rect: delete it in Blender)
 	] satisfies Rect[],
 	cabinets: [
 		{ x: 80, y: 80, w: 56, h: 44, id: 1, search: false },
